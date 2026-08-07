@@ -1,0 +1,12 @@
+ SELECT
+    ?item
+    ?itemLabel
+    ?itemDescription
+  WHERE {
+    ?item wdt:P279* wd:Q2095.
+
+    SERVICE wikibase:label {
+      bd:serviceParam wikibase:language "en".
+    }
+  }
+  LIMIT 1000

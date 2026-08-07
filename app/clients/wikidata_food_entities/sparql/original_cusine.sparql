@@ -1,0 +1,12 @@
+SELECT ?item ?country ?countryLabel ?cuisine ?cuisineLabel WHERE {
+    VALUES ?item {
+      $items
+    }
+
+    OPTIONAL { ?item wdt:P495 ?country. }
+    OPTIONAL { ?item wdt:P2012 ?cuisine. }
+
+    SERVICE wikibase:label {
+      bd:serviceParam wikibase:language "en".
+    }
+  }

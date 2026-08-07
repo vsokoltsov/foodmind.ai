@@ -1,0 +1,12 @@
+SELECT ?item ?instance ?instanceLabel ?subclass ?subclassLabel WHERE {
+    VALUES ?item {
+      $items
+    }
+
+    OPTIONAL { ?item wdt:P31 ?instance. }
+    OPTIONAL { ?item wdt:P279 ?subclass. }
+
+    SERVICE wikibase:label {
+      bd:serviceParam wikibase:language "en".
+    }
+  }

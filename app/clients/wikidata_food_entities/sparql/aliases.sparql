@@ -1,0 +1,8 @@
+SELECT ?item ?alias WHERE {
+    VALUES ?item {
+      $items
+    }
+
+    ?item skos:altLabel ?alias.
+    FILTER(LANG(?alias) = "en")
+  }

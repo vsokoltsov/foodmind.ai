@@ -1,0 +1,12 @@
+SELECT ?item ?image ?article WHERE {
+    VALUES ?item {
+      $items
+    }
+
+    OPTIONAL { ?item wdt:P18 ?image. }
+
+    OPTIONAL {
+      ?article schema:about ?item;
+               schema:isPartOf <https://en.wikipedia.org/>.
+    }
+  }
