@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local data artifacts
+data/raw/
+data/processed/
+data/reports/
+.DS_Store
