@@ -1,0 +1,52 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.4.3}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.enrollment.enabled: "false"
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl --fail --silent http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s >/dev/null || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  elasticsearch-init:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.4.3}
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_INDEX_VERSION: ${ELASTICSEARCH_INDEX_VERSION:-v1}
+      INDEX_DEFINITIONS_DIR: /indexes
+    volumes:
+      - ./elasticsearch/generated/${ELASTICSEARCH_INDEX_VERSION:-v1}:/indexes:ro
+      - ./infra/elasticsearch/init-indexes.sh:/opt/foodmind/init-indexes.sh:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    entrypoint: ["bash", "/opt/foodmind/init-indexes.sh"]
+    restart: "no"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELASTIC_VERSION:-9.4.3}
+    environment:
+      ELASTICSEARCH_HOSTS: '["http://elasticsearch:9200"]'
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  elasticsearch-data:
