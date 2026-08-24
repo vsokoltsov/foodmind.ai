@@ -1,0 +1,114 @@
+{
+   "mappings": {
+      "_meta": {
+         "schema_version": "v1"
+      },
+      "dynamic": "strict",
+      "properties": {
+         "aliases": {
+            "type": "keyword"
+         },
+         "articles": {
+            "type": "keyword"
+         },
+         "countries": {
+            "properties": {
+               "id": {
+                  "type": "keyword"
+               },
+               "label": {
+                  "fields": {
+                     "keyword": {
+                        "ignore_above": 512,
+                        "type": "keyword"
+                     }
+                  },
+                  "type": "text"
+               }
+            },
+            "type": "nested"
+         },
+         "cuisines": {
+            "properties": {
+               "id": {
+                  "type": "keyword"
+               },
+               "label": {
+                  "fields": {
+                     "keyword": {
+                        "ignore_above": 512,
+                        "type": "keyword"
+                     }
+                  },
+                  "type": "text"
+               }
+            },
+            "type": "nested"
+         },
+         "description": {
+            "type": "text"
+         },
+         "entity_type": {
+            "type": "keyword"
+         },
+         "id": {
+            "type": "keyword"
+         },
+         "images": {
+            "index": false,
+            "type": "keyword"
+         },
+         "instance_of": {
+            "properties": {
+               "id": {
+                  "type": "keyword"
+               },
+               "label": {
+                  "fields": {
+                     "keyword": {
+                        "ignore_above": 512,
+                        "type": "keyword"
+                     }
+                  },
+                  "type": "text"
+               }
+            },
+            "type": "nested"
+         },
+         "label": {
+            "fields": {
+               "keyword": {
+                  "ignore_above": 512,
+                  "type": "keyword"
+               }
+            },
+            "type": "text"
+         },
+         "source": {
+            "type": "keyword"
+         },
+         "subclasses": {
+            "properties": {
+               "id": {
+                  "type": "keyword"
+               },
+               "label": {
+                  "fields": {
+                     "keyword": {
+                        "ignore_above": 512,
+                        "type": "keyword"
+                     }
+                  },
+                  "type": "text"
+               }
+            },
+            "type": "nested"
+         }
+      }
+   },
+   "settings": {
+      "number_of_replicas": 0,
+      "number_of_shards": 1,
+      "refresh_interval": "30s"
+   }
+}

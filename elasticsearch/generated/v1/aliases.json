@@ -1,0 +1,43 @@
+{
+   "actions": [
+      {
+         "add": {
+            "alias": "wikidata-food-entities",
+            "index": "wikidata-food-entities-v1",
+            "is_write_index": true
+         }
+      },
+      {
+         "add": {
+            "alias": "usda-foundation-foods",
+            "index": "usda-foundation-foods-v1",
+            "is_write_index": true
+         }
+      },
+      {
+         "add": {
+            "alias": "usda-branded-foods",
+            "index": "usda-branded-foods-v1",
+            "is_write_index": true
+         }
+      },
+      {
+         "add": {
+            "alias": "food-entities",
+            "index": "wikidata-food-entities-v1"
+         }
+      },
+      {
+         "add": {
+            "alias": "food-entities",
+            "index": "usda-foundation-foods-v1"
+         }
+      },
+      {
+         "add": {
+            "alias": "food-entities",
+            "index": "usda-branded-foods-v1"
+         }
+      }
+   ]
+}
