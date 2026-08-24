@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     )
 
     ELASTICSEARCH_URL: str = "http://localhost:9200"
+ 
 
-
-@lru_cache()
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Create and cache the application settings instance."""
     return Settings()
