@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.clients.openfoodfacts.models import OpenFoodFactsProduct
 from app.clients.usda_fdc.models import BrandedFood, FoodNutrient, FoundationFood
 
 
@@ -107,4 +108,72 @@ class BrandedDocument(BaseModel):
                 NutritionDocument.from_usda(nutrient)
                 for nutrient in food.food_nutrients
             ],
+        )
+
+
+class OpenFoodFactsDocument(BaseModel):
+    """Open Food Facts product document stored in Elasticsearch."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    source: Literal["openfoodfacts"] = "openfoodfacts"
+    entity_type: Literal["product"] = "product"
+    label: str
+    description: str | None
+    code: str
+    brands: str | None
+    brands_tags: list[str]
+    categories: str | None
+    categories_tags: list[str]
+    countries: str | None
+    countries_tags: list[str]
+    ingredients: str | None
+    ingredients_tags: list[str]
+    allergens: str | None
+    allergens_tags: list[str]
+    traces: str | None
+    traces_tags: list[str]
+    labels_tags: list[str]
+    quantity: str | None
+    serving_size: str | None
+    nutrition_grade: str | None
+    nova_group: int | None
+    nutriments: dict[str, int | float | str | None]
+    image_url: str | None
+    image_front_url: str | None
+    last_modified_at: int | None
+
+    @classmethod
+    def from_open_food_facts(
+        cls,
+        product: OpenFoodFactsProduct,
+    ) -> "OpenFoodFactsDocument":
+        """Create an indexed document from an Open Food Facts product."""
+        return cls(
+            id=f"openfoodfacts:{product.code}",
+            label=product.product_name or product.generic_name or product.code,
+            description=product.generic_name,
+            code=product.code,
+            brands=product.brands,
+            brands_tags=product.brands_tags,
+            categories=product.categories,
+            categories_tags=product.categories_tags,
+            countries=product.countries,
+            countries_tags=product.countries_tags,
+            ingredients=product.ingredients_text,
+            ingredients_tags=product.ingredients_tags,
+            allergens=product.allergens,
+            allergens_tags=product.allergens_tags,
+            traces=product.traces,
+            traces_tags=product.traces_tags,
+            labels_tags=product.labels_tags,
+            quantity=product.quantity,
+            serving_size=product.serving_size,
+            nutrition_grade=product.nutrition_grades,
+            nova_group=product.nova_group,
+            nutriments=product.nutriments,
+            image_url=product.image_url,
+            image_front_url=product.image_front_url,
+            last_modified_at=product.last_modified_t,
         )
