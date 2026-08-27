@@ -1,0 +1,35 @@
+"""Elasticsearch persistence for normalized Wikidata food entities."""
+
+from dataclasses import dataclass
+
+from elasticsearch import AsyncElasticsearch
+from elasticsearch.helpers import async_bulk
+
+from app.ingestion.models import FoodEntityRecord
+
+
+@dataclass
+class WikidataFoodRepository:
+    """Store Wikidata food records in their stable Elasticsearch write alias."""
+
+    client: AsyncElasticsearch
+
+    async def save_records(self, documents: list[FoodEntityRecord]) -> None:
+        """Insert or replace a batch of normalized Wikidata food records."""
+        await async_bulk(
+            self.client,
+            actions=(
+                {
+                    "_index": "wikidata-food-entities",
+                    "_id": f"wikidata:{document.id}",
+                    "_source": {
+                        "id": f"wikidata:{document.id}",
+                        "source": "wikidata",
+                        "entity_type": "food_concept",
+                        **document.model_dump(mode="json", exclude={"id"}),
+                    },
+                }
+                for document in documents
+            ),
+            raise_on_error=True,
+        )
