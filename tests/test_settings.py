@@ -20,7 +20,7 @@ def test_get_settings_uses_default_elasticsearch_url(
 
     settings = get_settings()
 
-    assert settings.elasticsearch_url == "http://localhost:9200"
+    assert settings.ELASTICSEARCH_URL == "http://localhost:9200"
 
 
 def test_get_settings_reads_environment_and_caches_instance(
@@ -31,5 +31,5 @@ def test_get_settings_reads_environment_and_caches_instance(
     first = get_settings()
     second = get_settings()
 
-    assert first.elasticsearch_url == "http://elasticsearch.test:9200"
+    assert first.ELASTICSEARCH_URL == "http://elasticsearch.test:9200"
     assert second is first
