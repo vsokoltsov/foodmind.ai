@@ -15,6 +15,7 @@ INDEX_DEFINITIONS = {
     "wikidata-food-entities-v1": "wikidata-food-entities.json",
     "usda-foundation-foods-v1": "usda-foundation-foods.json",
     "usda-branded-foods-v1": "usda-branded-foods.json",
+    "openfoodfacts-products-v1": "openfoodfacts-products.json",
 }
 
 
