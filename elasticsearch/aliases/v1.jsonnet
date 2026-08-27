@@ -21,6 +21,13 @@
         is_write_index: true,
       },
     },
+    {
+      add: {
+        index: 'openfoodfacts-products-v1',
+        alias: 'openfoodfacts-products',
+        is_write_index: true,
+      },
+    },
   ] + [
     {
       add: {
@@ -32,6 +39,7 @@
       'wikidata-food-entities-v1',
       'usda-foundation-foods-v1',
       'usda-branded-foods-v1',
+      'openfoodfacts-products-v1',
     ]
   ],
 }

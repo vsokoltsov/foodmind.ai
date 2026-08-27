@@ -1,0 +1,111 @@
+{
+   "mappings": {
+      "_meta": {
+         "schema_version": "v1"
+      },
+      "dynamic": "strict",
+      "properties": {
+         "allergens": {
+            "type": "text"
+         },
+         "allergens_tags": {
+            "type": "keyword"
+         },
+         "brands": {
+            "fields": {
+               "keyword": {
+                  "ignore_above": 512,
+                  "type": "keyword"
+               }
+            },
+            "type": "text"
+         },
+         "brands_tags": {
+            "type": "keyword"
+         },
+         "categories": {
+            "type": "text"
+         },
+         "categories_tags": {
+            "type": "keyword"
+         },
+         "code": {
+            "type": "keyword"
+         },
+         "countries": {
+            "type": "text"
+         },
+         "countries_tags": {
+            "type": "keyword"
+         },
+         "description": {
+            "type": "text"
+         },
+         "entity_type": {
+            "type": "keyword"
+         },
+         "id": {
+            "type": "keyword"
+         },
+         "image_front_url": {
+            "index": false,
+            "type": "keyword"
+         },
+         "image_url": {
+            "index": false,
+            "type": "keyword"
+         },
+         "ingredients": {
+            "type": "text"
+         },
+         "ingredients_tags": {
+            "type": "keyword"
+         },
+         "label": {
+            "fields": {
+               "keyword": {
+                  "ignore_above": 512,
+                  "type": "keyword"
+               }
+            },
+            "type": "text"
+         },
+         "labels_tags": {
+            "type": "keyword"
+         },
+         "last_modified_at": {
+            "format": "epoch_second",
+            "type": "date"
+         },
+         "nova_group": {
+            "type": "byte"
+         },
+         "nutriments": {
+            "type": "flattened"
+         },
+         "nutrition_grade": {
+            "type": "keyword"
+         },
+         "quantity": {
+            "type": "keyword"
+         },
+         "serving_size": {
+            "type": "keyword"
+         },
+         "source": {
+            "type": "keyword"
+         },
+         "traces": {
+            "type": "text"
+         },
+         "traces_tags": {
+            "type": "keyword"
+         }
+      }
+   },
+   "settings": {
+      "number_of_replicas": 0,
+      "number_of_shards": 1,
+      "refresh_interval": "30s"
+   }
+}

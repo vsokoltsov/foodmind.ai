@@ -62,6 +62,10 @@ create_index_if_missing \
   "usda-branded-foods-${INDEX_VERSION}" \
   "${INDEX_DEFINITIONS_DIR}/usda-branded-foods.json"
 
+create_index_if_missing \
+  "openfoodfacts-products-${INDEX_VERSION}" \
+  "${INDEX_DEFINITIONS_DIR}/openfoodfacts-products.json"
+
 readonly ALIASES_FILE="${INDEX_DEFINITIONS_DIR}/aliases.json"
 if [[ ! -r "${ALIASES_FILE}" ]]; then
   echo "Alias definition is not readable: ${ALIASES_FILE}" >&2
