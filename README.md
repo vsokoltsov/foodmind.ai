@@ -41,7 +41,7 @@ docker compose up -d
 ```
 
 Install the Jsonnet CLI if necessary (`brew install jsonnet` on macOS), then
-create the three physical indexes:
+create the four physical indexes:
 
 ```shell
 jsonnet elasticsearch/indexes/v1/wikidata-food-entities.jsonnet \
@@ -55,6 +55,10 @@ jsonnet elasticsearch/indexes/v1/usda-foundation-foods.jsonnet \
 jsonnet elasticsearch/indexes/v1/usda-branded-foods.jsonnet \
   | curl --fail --request PUT http://localhost:9200/usda-branded-foods-v1 \
       --header 'Content-Type: application/json' --data-binary @-
+
+jsonnet elasticsearch/indexes/v1/openfoodfacts-products.jsonnet \
+  | curl --fail --request PUT http://localhost:9200/openfoodfacts-products-v1 \
+      --header 'Content-Type: application/json' --data-binary @-
 ```
 
 Activate all aliases with one atomic Elasticsearch request:
@@ -66,10 +70,10 @@ jsonnet elasticsearch/aliases/v1.jsonnet \
 ```
 
 The source-specific aliases are `wikidata-food-entities`,
-`usda-foundation-foods`, and `usda-branded-foods`. The `food-entities` read
-alias searches all three physical indexes.
+`usda-foundation-foods`, `usda-branded-foods`, and `openfoodfacts-products`.
+The `food-entities` read alias searches all four physical indexes.
 
-For a schema change, copy the three definitions to an immutable `v2/`
+For a schema change, copy the four definitions to an immutable `v2/`
 directory, change their schema version, and create `-v2` physical indexes.
 Populate them with the native `_reindex` API or rebuild from source data. A new
 alias request should atomically remove the aliases from `-v1` and add them to
