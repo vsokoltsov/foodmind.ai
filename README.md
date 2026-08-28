@@ -1,5 +1,23 @@
 # FoodMind AI
 
+## Ingestion
+
+Start Elasticsearch and apply the generated indexes before ingesting data:
+
+```shell
+docker compose up -d
+uv run python cli.py --show-progress
+```
+
+The CLI starts Wikidata, USDA Foundation, USDA Branded, and Open Food Facts as
+four concurrent source jobs. Wikidata retains its two-stage dlt normalization;
+the archive readers stream records in bounded batches and all final writes use
+the source-specific Elasticsearch repositories. Existing archives are reused.
+Use `--force-download` only when they should be replaced.
+
+The Elasticsearch bulk batch size defaults to 500 and can be changed with
+`--batch-size`. Use `--wikidata-batch-size` separately for SPARQL query batches.
+
 ## Elasticsearch index versions
 
 Elasticsearch schemas are Jsonnet files under `elasticsearch/indexes/`. Each
