@@ -105,6 +105,26 @@ def test_streams_branded_foods(
     assert foods[0].label_nutrients.calories.value == 160
 
 
+def test_streams_branded_food_without_optional_dates(
+    reader: USDAFoodDataReader,
+    archive_factory: Callable[[str, object], Path],
+    branded_record: dict[str, object],
+) -> None:
+    branded_record.pop("modifiedDate")
+    branded_record.pop("availableDate")
+    archive = archive_factory(
+        "branded-without-dates",
+        {"BrandedFoods": [branded_record]},
+    )
+
+    foods = list(reader.iter_branded_foods(archive))
+
+    assert len(foods) == 1
+    assert foods[0].fdc_id == 1106304
+    assert foods[0].modified_date is None
+    assert foods[0].available_date is None
+
+
 def test_rejects_archive_without_exactly_one_json_file(
     reader: USDAFoodDataReader,
     tmp_path: Path,

@@ -8,10 +8,12 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from app.ingestion.wikidata_food_entities import (
+    _read_models,
     normalize_food_entity_records,
     run_pipeline_stages,
 )
 from app.ingestion.models import (
+    FoodEntityRecord,
     WikidataAliasRecord,
     WikidataEntityRecord,
     WikidataMediaArticleRecord,
@@ -232,6 +234,20 @@ def test_dlt_resource_loads_normalized_record_into_duckdb(
         )
     assert normalized_rows == [
         ("Q123", "Test food", "A food used for ingestion tests"),
+    ]
+    assert _read_models(pipeline, "food_entities", FoodEntityRecord) == [
+        FoodEntityRecord(
+            id="Q123",
+            label="Test food",
+            description="A food used for ingestion tests",
+            aliases=["Test dish"],
+            countries=[{"id": "Q38", "label": "Italy"}],
+            cuisines=[{"id": "Q192786", "label": "Italian cuisine"}],
+            instance_of=[{"id": "Q2095", "label": "Food"}],
+            subclasses=[{"id": "Q25403900", "label": "Food ingredient"}],
+            images=["https://commons.wikimedia.org/Food.jpg"],
+            articles=["https://en.wikipedia.org/wiki/Test_food"],
+        )
     ]
     assert staged_tables == [
         ("wikidata_aliases",),
