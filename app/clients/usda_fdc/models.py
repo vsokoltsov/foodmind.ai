@@ -237,8 +237,8 @@ class BrandedFood(USDAFoodDataModel):
     description: str
     food_nutrients: list[FoodNutrient]
     food_attributes: list[FoodAttribute]
-    modified_date: str
-    available_date: str
+    modified_date: str | None = None
+    available_date: str | None = None
     market_country: str
     brand_owner: str
     brand_name: str | None = None
