@@ -1,9 +1,10 @@
 """Two-stage dlt ingestion pipeline for normalized Wikidata food entities."""
 
+import json
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import Any, TypeVar, get_args, get_origin
 
 import dlt
 import httpx
@@ -21,6 +22,7 @@ from app.ingestion.models import (
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+JSON_CONTAINER_TYPES = (list, dict, tuple, set, frozenset)
 
 
 @dataclass(frozen=True)
@@ -327,7 +329,30 @@ def _read_models(
     """Read a staged dlt table into Pydantic models."""
     columns = list(model.model_fields)
     rows = pipeline.dataset().table(table_name).select(*columns).fetchall()
-    return [model.model_validate(dict(zip(columns, row))) for row in rows]
+    records = []
+    for row in rows:
+        values = dict(zip(columns, row))
+        # dlt maps nested Pydantic fields to DuckDB's JSON type. DuckDB returns
+        # those values as JSON text, so restore them before Pydantic validation.
+        for column, value in values.items():
+            if (
+                isinstance(value, str)
+                and value.startswith(("[", "{"))
+                and _expects_json_value(model.model_fields[column].annotation)
+            ):
+                values[column] = json.loads(value)
+        records.append(model.model_validate(values))
+    return records
+
+
+def _expects_json_value(annotation: Any) -> bool:
+    """Return whether a model annotation represents JSON-backed structured data."""
+    origin = get_origin(annotation)
+    if annotation in JSON_CONTAINER_TYPES or origin in JSON_CONTAINER_TYPES:
+        return True
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return True
+    return any(_expects_json_value(argument) for argument in get_args(annotation))
 
 
 @dlt.resource(
@@ -411,14 +436,34 @@ def run_pipeline(
     show_progress: bool = False,
 ) -> WikidataIngestionLoadInfo:
     """Create and run the two-stage Wikidata food entity pipeline."""
+    load_info, _records = run_pipeline_with_records(
+        pipeline_name=pipeline_name,
+        destination=destination,
+        dataset_name=dataset_name,
+        batch_size=batch_size,
+        show_progress=show_progress,
+    )
+    return load_info
+
+
+def run_pipeline_with_records(
+    *,
+    pipeline_name: str = "wikidata_food_entities",
+    destination: str = "duckdb",
+    dataset_name: str = "foodmind",
+    batch_size: int = 100,
+    show_progress: bool = False,
+) -> tuple[WikidataIngestionLoadInfo, list[FoodEntityRecord]]:
+    """Run the dlt stages and return normalized records for a final sink."""
     pipeline = dlt.pipeline(
         pipeline_name=pipeline_name,
         destination=destination,
         dataset_name=dataset_name,
     )
-    return run_pipeline_stages(
+    load_info = run_pipeline_stages(
         pipeline,
         batch_size=batch_size,
         show_progress=show_progress,
     )
-
+    records = _read_models(pipeline, "food_entities", FoodEntityRecord)
+    return load_info, records
