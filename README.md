@@ -65,6 +65,15 @@ uv run python cmd/ingestion.py stage openfoodfacts normalize \
   --staging-dir .dlt/staging
 ```
 
+### Application layers
+
+Source clients expose source-shaped Pydantic models. Their `.to_domain()`
+methods convert those values into canonical business objects under
+`app/aggregates/`. Ingestion and use cases pass these aggregates between
+layers. Elasticsearch repositories accept aggregates and perform the final
+conversion to persistence-specific document models internally; future read
+methods should convert documents back to aggregates before returning them.
+
 ## Elasticsearch index versions
 
 Elasticsearch schemas are Jsonnet files under `elasticsearch/indexes/`. Each
