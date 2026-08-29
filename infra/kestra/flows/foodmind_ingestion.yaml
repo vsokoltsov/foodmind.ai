@@ -1,0 +1,47 @@
+id: foodmind_ingestion
+namespace: foodmind
+description: Run all FoodMind source pipelines with bounded parallelism.
+
+tasks:
+  - id: elasticsearch_preflight
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - >-
+        python -c "import urllib.request;
+        urllib.request.urlopen('http://elasticsearch:9200/_cluster/health', timeout=10).read()"
+
+  - id: ingest_sources
+    type: io.kestra.plugin.core.flow.Parallel
+    concurrent: 4
+    tasks:
+      - id: wikidata
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: ingest_wikidata
+        namespace: foodmind
+
+      - id: usda_foundation
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: ingest_usda_foundation
+        namespace: foodmind
+
+      - id: usda_branded
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: ingest_usda_branded
+        namespace: foodmind
+
+      - id: openfoodfacts
+        type: io.kestra.plugin.core.flow.Subflow
+        flowId: ingest_openfoodfacts
+        namespace: foodmind
+
+  - id: ingestion_complete
+    type: io.kestra.plugin.core.log.Log
+    message: All source pipelines completed and their Elasticsearch counts were validated.
+
+pluginDefaults:
+  - type: io.kestra.plugin.core.flow.Subflow
+    values:
+      wait: true
+      transmitFailed: true

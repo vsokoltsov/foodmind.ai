@@ -1,0 +1,24 @@
+datasources:
+  postgres:
+    url: jdbc:postgresql://kestra-postgres:5432/kestra
+    driver-class-name: org.postgresql.Driver
+    username: kestra
+    password: kestra
+
+kestra:
+  server:
+    basic-auth:
+      username: ${KESTRA_BASIC_AUTH_USERNAME:admin@foodmind.local}
+      password: ${KESTRA_BASIC_AUTH_PASSWORD:Foodmind123}
+  repository:
+    type: postgres
+  queue:
+    type: postgres
+  storage:
+    type: local
+    local:
+      base-path: /app/storage
+  tasks:
+    tmp-dir:
+      path: /tmp/kestra-wd/tmp
+  url: http://localhost:8080/

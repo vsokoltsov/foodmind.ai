@@ -1,0 +1,47 @@
+id: ingest_openfoodfacts
+namespace: foodmind
+description: Download, transform, normalize, stage, and index Open Food Facts.
+
+concurrency:
+  limit: 1
+  behavior: QUEUE
+
+tasks:
+  - id: openfoodfacts_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: download_archive
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts download --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: transform_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts transform --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts normalize --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_staging_database
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts load --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: index_elasticsearch
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: validate_counts
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage openfoodfacts validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+pluginDefaults:
+  - type: io.kestra.plugin.scripts.shell.Commands
+    values:
+      taskRunner:
+        type: io.kestra.plugin.core.runner.Process

@@ -1,0 +1,17 @@
+server {
+    listen 8080;
+    server_name localhost;
+
+    location / {
+        proxy_pass http://kestra:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Cookie "BASIC_AUTH=${KESTRA_BASIC_AUTH_COOKIE}; $http_cookie";
+
+        add_header Set-Cookie "BASIC_AUTH=${KESTRA_BASIC_AUTH_COOKIE}; Path=/; SameSite=Strict" always;
+    }
+}

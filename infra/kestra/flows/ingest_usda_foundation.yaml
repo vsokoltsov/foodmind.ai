@@ -1,0 +1,47 @@
+id: ingest_usda_foundation
+namespace: foodmind
+description: Download, transform, normalize, stage, and index USDA Foundation Foods.
+
+concurrency:
+  limit: 1
+  behavior: QUEUE
+
+tasks:
+  - id: usda_foundation_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: download_archive
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation download --foundation-path /data/foundations.json.zip --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: transform_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation transform --foundation-path /data/foundations.json.zip --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation normalize --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_staging_database
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation load --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: index_elasticsearch
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: validate_counts
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-foundation validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+pluginDefaults:
+  - type: io.kestra.plugin.scripts.shell.Commands
+    values:
+      taskRunner:
+        type: io.kestra.plugin.core.runner.Process

@@ -1,0 +1,72 @@
+id: ingest_wikidata
+namespace: foodmind
+description: Stage, normalize, and index Wikidata food entities.
+
+concurrency:
+  limit: 1
+  behavior: QUEUE
+
+tasks:
+  - id: wikidata_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: extract_base_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata extract-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_base_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata normalize-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_base_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata load-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: extract_entity_details
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata extract-details --wikidata-batch-size 100 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_entity_details
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata normalize-details --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_entity_details
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata load-details --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: transform_food_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata transform --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_food_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata normalize-final --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_food_entities
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata load-final --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: index_elasticsearch
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: validate_counts
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage wikidata validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+pluginDefaults:
+  - type: io.kestra.plugin.scripts.shell.Commands
+    values:
+      taskRunner:
+        type: io.kestra.plugin.core.runner.Process

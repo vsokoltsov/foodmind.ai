@@ -1,0 +1,47 @@
+id: ingest_usda_branded
+namespace: foodmind
+description: Download, transform, normalize, stage, and index USDA Branded Foods.
+
+concurrency:
+  limit: 1
+  behavior: QUEUE
+
+tasks:
+  - id: usda_branded_pipeline
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: download_archive
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded download --branded-path /data/branded.json.zip --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: transform_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded transform --branded-path /data/branded.json.zip --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: normalize_documents
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded normalize --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: load_staging_database
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded load --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: index_elasticsearch
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+      - id: validate_counts
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - python /workspace/cmd/ingestion.py stage usda-branded validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+
+pluginDefaults:
+  - type: io.kestra.plugin.scripts.shell.Commands
+    values:
+      taskRunner:
+        type: io.kestra.plugin.core.runner.Process
