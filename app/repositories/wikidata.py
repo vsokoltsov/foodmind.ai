@@ -13,6 +13,7 @@ class WikidataFoodRepository:
     """Store Wikidata food records in their stable Elasticsearch write alias."""
 
     client: AsyncElasticsearch
+    index_name: str = "wikidata-food-entities"
 
     async def save_records(self, documents: list[FoodEntityRecord]) -> None:
         """Insert or replace a batch of normalized Wikidata food records."""
@@ -20,7 +21,7 @@ class WikidataFoodRepository:
             self.client,
             actions=(
                 {
-                    "_index": "wikidata-food-entities",
+                    "_index": self.index_name,
                     "_id": f"wikidata:{document.id}",
                     "_source": {
                         "id": f"wikidata:{document.id}",
