@@ -1,0 +1,13 @@
+ARG KESTRA_VERSION=latest
+
+FROM ghcr.io/astral-sh/uv:0.8.22 AS uv
+FROM kestra/kestra:${KESTRA_VERSION}
+
+USER root
+COPY --from=uv /uv /uvx /bin/
+COPY pyproject.toml uv.lock /opt/foodmind/
+RUN cd /opt/foodmind && uv sync --frozen --no-dev
+RUN /app/kestra plugins install io.kestra.plugin:plugin-script-shell:LATEST
+
+ENV PATH="/opt/foodmind/.venv/bin:${PATH}"
+WORKDIR /workspace
