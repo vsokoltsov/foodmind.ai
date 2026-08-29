@@ -48,5 +48,103 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  kestra-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: kestra
+    volumes:
+      - kestra-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra -d kestra"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  kestra:
+    image: foodmind-kestra:${KESTRA_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.kestra
+      args:
+        KESTRA_VERSION: ${KESTRA_VERSION:-latest}
+    user: root
+    command:
+      - server
+      - standalone
+      - --config
+      - /etc/kestra/application.yaml
+      - --plugins
+      - /app/plugins
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      KESTRA_BASIC_AUTH_USERNAME: ${KESTRA_BASIC_AUTH_USERNAME:-admin@foodmind.local}
+      KESTRA_BASIC_AUTH_PASSWORD: ${KESTRA_BASIC_AUTH_PASSWORD:-Foodmind123}
+    expose:
+      - "8080"
+      - "8081"
+    volumes:
+      - kestra-data:/app/storage
+      - kestra-dlt-data:/dlt
+      - ./data:/data
+      - ./:/workspace:ro
+      - ./infra/kestra/application.yaml:/etc/kestra/application.yaml:ro
+      - ./infra/kestra/flows:/app/flows:ro
+      - /tmp/kestra-wd:/tmp/kestra-wd
+    depends_on:
+      kestra-postgres:
+        condition: service_healthy
+      elasticsearch-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8081/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  kestra-ui:
+    image: nginx:1.29-alpine
+    environment:
+      KESTRA_BASIC_AUTH_USERNAME: ${KESTRA_BASIC_AUTH_USERNAME:-admin@foodmind.local}
+      KESTRA_BASIC_AUTH_PASSWORD: ${KESTRA_BASIC_AUTH_PASSWORD:-Foodmind123}
+    entrypoint: ["/opt/foodmind/nginx-entrypoint.sh"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./infra/kestra/nginx-entrypoint.sh:/opt/foodmind/nginx-entrypoint.sh:ro
+      - ./infra/kestra/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    depends_on:
+      kestra:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kestra-init:
+    image: foodmind-kestra:${KESTRA_VERSION:-latest}
+    command:
+      - flow
+      - namespace
+      - update
+      - --plugins
+      - /app/plugins
+      - --server
+      - http://kestra:8080
+      - --user
+      - ${KESTRA_BASIC_AUTH_USERNAME:-admin@foodmind.local}:${KESTRA_BASIC_AUTH_PASSWORD:-Foodmind123}
+      - foodmind
+      - /app/flows
+    volumes:
+      - ./infra/kestra/flows:/app/flows:ro
+    depends_on:
+      kestra:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   elasticsearch-data:
+  kestra-postgres-data:
+  kestra-data:
+  kestra-dlt-data:
