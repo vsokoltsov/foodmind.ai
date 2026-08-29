@@ -16,3 +16,4 @@ data/reports/
 .DS_Store
 *.duckdb
 .env
+gcp.json
