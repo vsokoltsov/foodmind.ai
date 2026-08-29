@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
-from app.clients.openfoodfacts.models import OpenFoodFactsProduct
+from app.aggregates import OpenFoodFactsProduct as OpenFoodFactsAggregate
+from app.clients.openfoodfacts.models import OpenFoodFactsProduct as ClientProduct
 from app.repositories.models import OpenFoodFactsDocument
 
 
@@ -16,17 +17,14 @@ class OpenFoodFactsRepository:
     client: AsyncElasticsearch
     index_name: str = "openfoodfacts-products"
 
-    async def save_records(self, documents: list[OpenFoodFactsProduct]) -> None:
-        """Insert or replace a batch of Open Food Facts products."""
-        await self.save_documents(
-            [OpenFoodFactsDocument.from_open_food_facts(document) for document in documents]
-        )
-
-    async def save_documents(
-        self,
-        documents: list[OpenFoodFactsDocument],
-    ) -> None:
-        """Insert or replace already-normalized Open Food Facts documents."""
+    async def save_records(self, products: list[OpenFoodFactsAggregate]) -> None:
+        """Insert or replace a batch of canonical Open Food Facts products."""
+        documents = [
+            OpenFoodFactsDocument.from_domain(
+                product.to_domain() if isinstance(product, ClientProduct) else product
+            )
+            for product in products
+        ]
         await async_bulk(
             self.client,
             actions=(

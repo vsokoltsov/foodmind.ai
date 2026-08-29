@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
-from app.clients.usda_fdc.models import BrandedFood, FoundationFood
+from app.aggregates import (
+    BrandedFood as BrandedFoodAggregate,
+    FoundationFood as FoundationFoodAggregate,
+)
+from app.clients.usda_fdc.models import (
+    BrandedFood as ClientBrandedFood,
+    FoundationFood as ClientFoundationFood,
+)
 from app.repositories.models import BrandedDocument, FoundationDocument
 
 
@@ -17,17 +24,14 @@ class USDARepository:
     foundation_index_name: str = "usda-foundation-foods"
     branded_index_name: str = "usda-branded-foods"
 
-    async def save_foundations(self, documents: list[FoundationFood]) -> None:
-        """Insert or replace a batch of USDA Foundation Foods."""
-        await self.save_foundation_documents(
-            [FoundationDocument.from_usda(document) for document in documents]
-        )
-
-    async def save_foundation_documents(
-        self,
-        documents: list[FoundationDocument],
-    ) -> None:
-        """Insert or replace already-normalized Foundation documents."""
+    async def save_foundations(self, foods: list[FoundationFoodAggregate]) -> None:
+        """Insert or replace a batch of canonical Foundation Foods."""
+        documents = [
+            FoundationDocument.from_domain(
+                food.to_domain() if isinstance(food, ClientFoundationFood) else food
+            )
+            for food in foods
+        ]
         await async_bulk(
             self.client,
             actions=(
@@ -41,17 +45,14 @@ class USDARepository:
             raise_on_error=True,
         )
 
-    async def save_branded(self, documents: list[BrandedFood]) -> None:
-        """Insert or replace a batch of USDA Branded Foods."""
-        await self.save_branded_documents(
-            [BrandedDocument.from_usda(document) for document in documents]
-        )
-
-    async def save_branded_documents(
-        self,
-        documents: list[BrandedDocument],
-    ) -> None:
-        """Insert or replace already-normalized Branded documents."""
+    async def save_branded(self, foods: list[BrandedFoodAggregate]) -> None:
+        """Insert or replace a batch of canonical Branded Foods."""
+        documents = [
+            BrandedDocument.from_domain(
+                food.to_domain() if isinstance(food, ClientBrandedFood) else food
+            )
+            for food in foods
+        ]
         await async_bulk(
             self.client,
             actions=(

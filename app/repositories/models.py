@@ -4,6 +4,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.aggregates import (
+    BrandedFood as BrandedFoodAggregate,
+    FoundationFood as FoundationFoodAggregate,
+    Nutrition,
+    OpenFoodFactsProduct as OpenFoodFactsAggregate,
+)
 from app.clients.openfoodfacts.models import OpenFoodFactsProduct
 from app.clients.usda_fdc.models import BrandedFood, FoodNutrient, FoundationFood
 
@@ -29,6 +35,11 @@ class NutritionDocument(BaseModel):
             unit=nutrient.nutrient.unit_name,
             amount=nutrient.amount,
         )
+
+    @classmethod
+    def from_domain(cls, nutrient: Nutrition) -> "NutritionDocument":
+        """Create an indexed nutrient from a canonical nutrition object."""
+        return cls.model_validate(nutrient.model_dump())
 
 
 class FoundationDocument(BaseModel):
@@ -63,6 +74,11 @@ class FoundationDocument(BaseModel):
                 for nutrient in food.food_nutrients
             ],
         )
+
+    @classmethod
+    def from_domain(cls, food: FoundationFoodAggregate) -> "FoundationDocument":
+        """Create an indexed document from a canonical Foundation Food."""
+        return cls.model_validate(food.model_dump())
 
 
 class BrandedDocument(BaseModel):
@@ -109,6 +125,11 @@ class BrandedDocument(BaseModel):
                 for nutrient in food.food_nutrients
             ],
         )
+
+    @classmethod
+    def from_domain(cls, food: BrandedFoodAggregate) -> "BrandedDocument":
+        """Create an indexed document from a canonical Branded Food."""
+        return cls.model_validate(food.model_dump())
 
 
 class OpenFoodFactsDocument(BaseModel):
@@ -177,3 +198,8 @@ class OpenFoodFactsDocument(BaseModel):
             image_front_url=product.image_front_url,
             last_modified_at=product.last_modified_t,
         )
+
+    @classmethod
+    def from_domain(cls, product: OpenFoodFactsAggregate) -> "OpenFoodFactsDocument":
+        """Create an indexed document from a canonical product object."""
+        return cls.model_validate(product.model_dump())
