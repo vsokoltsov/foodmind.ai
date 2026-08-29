@@ -154,15 +154,16 @@ def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
 def extract_source_documents(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Extract and transform an archive into a pending dlt load package."""
     pipeline = create_pipeline(source, config)
-    if source == "usda-foundation":
-        resource = usda_foundation_documents_resource(config.foundation_archive)
-        return pipeline.extract(resource)
-    if source == "usda-branded":
-        return pipeline.extract(usda_branded_documents_resource(config.branded_archive))
-    if source == "openfoodfacts":
-        resource = openfoodfacts_documents_resource(config.openfoodfacts_archive)
-        return pipeline.extract(resource)
-    raise ValueError("Wikidata uses its base/detail extraction stages")
+    match source:
+        case "usda-foundation":
+            resource = usda_foundation_documents_resource(config.foundation_archive)
+        case "usda-branded":
+            resource = usda_branded_documents_resource(config.branded_archive)
+        case "openfoodfacts":
+            resource = openfoodfacts_documents_resource(config.openfoodfacts_archive)
+        case _:
+            raise ValueError("Wikidata uses its base/detail extraction stages")
+    return pipeline.extract(resource)
 
 
 def extract_wikidata_base(config: StagedIngestionConfig) -> Any:
@@ -262,21 +263,26 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
     read_timeout = 900.0 if source == "openfoodfacts" else 300.0
     timeout = httpx.Timeout(connect=30.0, read=read_timeout, write=30.0, pool=30.0)
     async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-        if source == "usda-foundation":
-            path = config.foundation_archive
-            download: Callable[[], Any] = lambda: USDAFoundationClient(
-                client
-            ).get_foundations(str(path))
-        elif source == "usda-branded":
-            path = config.branded_archive
-            download = lambda: USDAFoundationClient(client).get_branded(str(path))
-        elif source == "openfoodfacts":
-            path = config.openfoodfacts_archive
-            download = lambda: OpenFoodFactsClient(client).get_facts(
-                str(path), show_progress=config.show_progress
-            )
-        else:
-            raise ValueError("Wikidata is queried directly and has no archive download")
+        match source:
+            case "usda-foundation":
+                path = config.foundation_archive
+                download: Callable[[], Any] = lambda: USDAFoundationClient(
+                    client
+                ).get_foundations(str(path))
+            case "usda-branded":
+                path = config.branded_archive
+                download = lambda: USDAFoundationClient(client).get_branded(
+                    str(path)
+                )
+            case "openfoodfacts":
+                path = config.openfoodfacts_archive
+                download = lambda: OpenFoodFactsClient(client).get_facts(
+                    str(path), show_progress=config.show_progress
+                )
+            case _:
+                raise ValueError(
+                    "Wikidata is queried directly and has no archive download"
+                )
         if config.force_download or not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
@@ -298,30 +304,43 @@ async def index_staged_source(
             alias=INDEX_ALIASES[source],
             staging_dir=config.staging_dir,
         )
-        if source == "wikidata":
-            records = iter_models(pipeline, TABLES[source], FoodEntityRecord)
-            save = WikidataFoodRepository(
-                elasticsearch,
-                index_name=target_index,
-            ).save_records
-        elif source == "usda-foundation":
-            records = iter_models(pipeline, TABLES[source], FoundationFoodAggregate)
-            save = USDARepository(
-                elasticsearch,
-                foundation_index_name=target_index,
-            ).save_foundations
-        elif source == "usda-branded":
-            records = iter_models(pipeline, TABLES[source], BrandedFoodAggregate)
-            save = USDARepository(
-                elasticsearch,
-                branded_index_name=target_index,
-            ).save_branded
-        else:
-            records = iter_models(pipeline, TABLES[source], OpenFoodFactsAggregate)
-            save = OpenFoodFactsRepository(
-                elasticsearch,
-                index_name=target_index,
-            ).save_records
+        match source:
+            case "wikidata":
+                records = iter_models(pipeline, TABLES[source], FoodEntityRecord)
+                save = WikidataFoodRepository(
+                    elasticsearch,
+                    index_name=target_index,
+                ).save_records
+            case "usda-foundation":
+                records = iter_models(
+                    pipeline,
+                    TABLES[source],
+                    FoundationFoodAggregate,
+                )
+                save = USDARepository(
+                    elasticsearch,
+                    foundation_index_name=target_index,
+                ).save_foundations
+            case "usda-branded":
+                records = iter_models(
+                    pipeline,
+                    TABLES[source],
+                    BrandedFoodAggregate,
+                )
+                save = USDARepository(
+                    elasticsearch,
+                    branded_index_name=target_index,
+                ).save_branded
+            case "openfoodfacts":
+                records = iter_models(
+                    pipeline,
+                    TABLES[source],
+                    OpenFoodFactsAggregate,
+                )
+                save = OpenFoodFactsRepository(
+                    elasticsearch,
+                    index_name=target_index,
+                ).save_records
         return await index_records(
             records,
             save,
