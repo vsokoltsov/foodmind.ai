@@ -15,6 +15,11 @@ from app.clients.openfoodfacts.client import OpenFoodFactsClient
 from app.clients.openfoodfacts.reader import OpenFoodFactsReader
 from app.clients.usda_fdc.client import USDAFoundationClient
 from app.clients.usda_fdc.reader import USDAFoodDataReader
+from app.aggregates import (
+    BrandedFood as BrandedFoodAggregate,
+    FoundationFood as FoundationFoodAggregate,
+    OpenFoodFactsProduct as OpenFoodFactsAggregate,
+)
 from app.ingestion.elasticsearch_snapshots import (
     pending_snapshot_index,
     prepare_snapshot_index,
@@ -34,11 +39,6 @@ from app.ingestion.wikidata_food_entities import (
     normalized_food_entities_resource,
     wikidata_details_source,
     wikidata_entities_resource,
-)
-from app.repositories.models import (
-    BrandedDocument,
-    FoundationDocument,
-    OpenFoodFactsDocument,
 )
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.usda import USDARepository
@@ -119,38 +119,36 @@ def create_pipeline(source: SourceName, config: StagedIngestionConfig) -> Any:
     name="usda_foundation_documents",
     primary_key="id",
     write_disposition="replace",
-    columns=FoundationDocument,
+    columns=FoundationFoodAggregate,
 )
 def usda_foundation_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Foundation Foods into canonical documents."""
     for food in USDAFoodDataReader().iter_foundation_foods(path):
-        yield FoundationDocument.from_usda(food).model_dump(mode="json")
+        yield food.to_domain().model_dump(mode="json")
 
 
 @dlt.resource(
     name="usda_branded_documents",
     primary_key="id",
     write_disposition="replace",
-    columns=BrandedDocument,
+    columns=BrandedFoodAggregate,
 )
 def usda_branded_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Branded Foods into canonical documents."""
     for food in USDAFoodDataReader().iter_branded_foods(path):
-        yield BrandedDocument.from_usda(food).model_dump(mode="json")
+        yield food.to_domain().model_dump(mode="json")
 
 
 @dlt.resource(
     name="openfoodfacts_documents",
     primary_key="id",
     write_disposition="replace",
-    columns=OpenFoodFactsDocument,
+    columns=OpenFoodFactsAggregate,
 )
 def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Open Food Facts products into canonical documents."""
     for product in OpenFoodFactsReader().iter_products(path):
-        yield OpenFoodFactsDocument.from_open_food_facts(product).model_dump(
-            mode="json"
-        )
+        yield product.to_domain().model_dump(mode="json")
 
 
 def extract_source_documents(source: SourceName, config: StagedIngestionConfig) -> Any:
@@ -307,23 +305,23 @@ async def index_staged_source(
                 index_name=target_index,
             ).save_records
         elif source == "usda-foundation":
-            records = iter_models(pipeline, TABLES[source], FoundationDocument)
+            records = iter_models(pipeline, TABLES[source], FoundationFoodAggregate)
             save = USDARepository(
                 elasticsearch,
                 foundation_index_name=target_index,
-            ).save_foundation_documents
+            ).save_foundations
         elif source == "usda-branded":
-            records = iter_models(pipeline, TABLES[source], BrandedDocument)
+            records = iter_models(pipeline, TABLES[source], BrandedFoodAggregate)
             save = USDARepository(
                 elasticsearch,
                 branded_index_name=target_index,
-            ).save_branded_documents
+            ).save_branded
         else:
-            records = iter_models(pipeline, TABLES[source], OpenFoodFactsDocument)
+            records = iter_models(pipeline, TABLES[source], OpenFoodFactsAggregate)
             save = OpenFoodFactsRepository(
                 elasticsearch,
                 index_name=target_index,
-            ).save_documents
+            ).save_records
         return await index_records(
             records,
             save,

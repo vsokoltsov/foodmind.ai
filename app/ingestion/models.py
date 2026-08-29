@@ -1,13 +1,11 @@
-"""Normalized models emitted by ingestion pipelines."""
+"""Transport models used by the Wikidata extraction stages."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from app.aggregates import FoodEntity, RelatedEntity
 
-class RelatedEntity(BaseModel):
-    """A Wikidata entity referenced by a normalized food record."""
-
-    id: str
-    label: str | None = None
+# Kept as a compatibility name for staged dlt tables and existing integrations.
+FoodEntityRecord = FoodEntity
 
 
 class WikidataEntityRecord(BaseModel):
@@ -51,18 +49,3 @@ class WikidataMediaArticleRecord(BaseModel):
     item_id: str
     image: str | None = None
     article: str | None = None
-
-
-class FoodEntityRecord(BaseModel):
-    """A normalized food entity assembled from Wikidata query responses."""
-
-    id: str
-    label: str
-    description: str | None = None
-    aliases: list[str] = Field(default_factory=list)
-    countries: list[RelatedEntity] = Field(default_factory=list)
-    cuisines: list[RelatedEntity] = Field(default_factory=list)
-    instance_of: list[RelatedEntity] = Field(default_factory=list)
-    subclasses: list[RelatedEntity] = Field(default_factory=list)
-    images: list[str] = Field(default_factory=list)
-    articles: list[str] = Field(default_factory=list)
