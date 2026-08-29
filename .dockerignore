@@ -1,0 +1,10 @@
+.git
+.venv
+.dlt
+.pytest_cache
+__pycache__
+*.pyc
+*.duckdb
+*.gz
+*.zip
+data
