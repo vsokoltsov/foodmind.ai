@@ -2,6 +2,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.aggregates.openfoodfacts_product import (
+    OpenFoodFactsProduct as OpenFoodFactsAggregate,
+)
+
 
 class DownloadArtifact(BaseModel):
     """Metadata describing a downloaded Open Food Facts export."""
@@ -48,3 +52,33 @@ class OpenFoodFactsProduct(BaseModel):
     image_url: str | None = None
     image_front_url: str | None = None
     last_modified_t: int | None = None
+
+    def to_domain(self) -> OpenFoodFactsAggregate:
+        """Convert the source-shaped product into a canonical product object."""
+        return OpenFoodFactsAggregate(
+            id=f"openfoodfacts:{self.code}",
+            label=self.product_name or self.generic_name or self.code,
+            description=self.generic_name,
+            code=self.code,
+            brands=self.brands,
+            brands_tags=self.brands_tags,
+            categories=self.categories,
+            categories_tags=self.categories_tags,
+            countries=self.countries,
+            countries_tags=self.countries_tags,
+            ingredients=self.ingredients_text,
+            ingredients_tags=self.ingredients_tags,
+            allergens=self.allergens,
+            allergens_tags=self.allergens_tags,
+            traces=self.traces,
+            traces_tags=self.traces_tags,
+            labels_tags=self.labels_tags,
+            quantity=self.quantity,
+            serving_size=self.serving_size,
+            nutrition_grade=self.nutrition_grades,
+            nova_group=self.nova_group,
+            nutriments=self.nutriments,
+            image_url=self.image_url,
+            image_front_url=self.image_front_url,
+            last_modified_at=self.last_modified_t,
+        )

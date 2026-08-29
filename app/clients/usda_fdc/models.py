@@ -5,6 +5,10 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from app.aggregates.branded_food import BrandedFood as BrandedFoodAggregate
+from app.aggregates.foundation_food import FoundationFood as FoundationFoodAggregate
+from app.aggregates.nutrition import Nutrition
+
 
 class DownloadArtifact(BaseModel):
     """Metadata describing an archive downloaded from FoodData Central."""
@@ -163,6 +167,27 @@ class FoundationFood(USDAFoodDataModel):
         default_factory=list
     )
 
+    def to_domain(self) -> FoundationFoodAggregate:
+        """Convert a USDA Foundation record into a canonical food object."""
+        return FoundationFoodAggregate(
+            id=f"usda-fdc:{self.fdc_id}",
+            label=self.description,
+            fdc_id=self.fdc_id,
+            category=self.food_category.description,
+            scientific_name=self.scientific_name,
+            publication_date=self.publication_date,
+            nutrients=[
+                Nutrition(
+                    id=nutrient.nutrient.id,
+                    number=nutrient.nutrient.number,
+                    name=nutrient.nutrient.name,
+                    unit=nutrient.nutrient.unit_name,
+                    amount=nutrient.amount,
+                )
+                for nutrient in self.food_nutrients
+            ],
+        )
+
 
 class FoundationFoodsResponse(USDAFoodDataModel):
     """Top-level object in a Foundation Foods JSON download.
@@ -258,6 +283,34 @@ class BrandedFood(USDAFoodDataModel):
     fdc_id: int
     publication_date: str
     package_weight: str | None = None
+
+    def to_domain(self) -> BrandedFoodAggregate:
+        """Convert a USDA Branded record into a canonical food object."""
+        return BrandedFoodAggregate(
+            id=f"usda-fdc:{self.fdc_id}",
+            label=self.description,
+            description=self.short_description,
+            fdc_id=self.fdc_id,
+            category=self.branded_food_category,
+            brand_owner=self.brand_owner,
+            brand_name=self.brand_name,
+            gtin_upc=self.gtin_upc,
+            ingredients=self.ingredients,
+            market_country=self.market_country,
+            publication_date=self.publication_date,
+            serving_size=self.serving_size,
+            serving_size_unit=self.serving_size_unit,
+            nutrients=[
+                Nutrition(
+                    id=nutrient.nutrient.id,
+                    number=nutrient.nutrient.number,
+                    name=nutrient.nutrient.name,
+                    unit=nutrient.nutrient.unit_name,
+                    amount=nutrient.amount,
+                )
+                for nutrient in self.food_nutrients
+            ],
+        )
     short_description: str | None = None
 
 

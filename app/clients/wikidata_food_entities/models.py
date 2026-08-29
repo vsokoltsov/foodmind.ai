@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.aggregates import FoodEntity
+
 
 class WikidataValue(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -22,6 +24,16 @@ class WikidataFoodEntityBinding(BaseModel):
         default=None,
         alias="itemDescription",
     )
+
+    def to_domain(self) -> FoodEntity:
+        """Convert one Wikidata binding into a canonical food entity."""
+        return FoodEntity(
+            id=self.item.qid_from_uri,
+            label=self.item_label.value,
+            description=(
+                self.item_description.value if self.item_description is not None else None
+            ),
+        )
 
 
 class WikidataResults(BaseModel):
