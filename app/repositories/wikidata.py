@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
-from app.ingestion.models import FoodEntityRecord
+from app.aggregates import FoodEntity
 
 
 @dataclass
@@ -15,7 +15,7 @@ class WikidataFoodRepository:
     client: AsyncElasticsearch
     index_name: str = "wikidata-food-entities"
 
-    async def save_records(self, documents: list[FoodEntityRecord]) -> None:
+    async def save_records(self, documents: list[FoodEntity]) -> None:
         """Insert or replace a batch of normalized Wikidata food records."""
         await async_bulk(
             self.client,

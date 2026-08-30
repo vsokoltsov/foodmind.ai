@@ -7,7 +7,7 @@ from zipfile import ZipFile
 import pytest
 from elasticsearch import Elasticsearch
 
-from app.ingestion.models import FoodEntityRecord
+from app.aggregates import FoodEntity
 from app.ingestion.pipeline import IngestionConfig, run_ingestion
 
 pytestmark = pytest.mark.integration
@@ -93,7 +93,7 @@ def test_all_sources_write_to_elasticsearch_in_one_pipeline(
 
     def wikidata_loader(**_kwargs):
         return object(), [
-            FoodEntityRecord(id="Q999999", label="Pipeline Wikidata food")
+            FoodEntity(id="Q999999", label="Pipeline Wikidata food")
         ]
 
     result = asyncio.run(

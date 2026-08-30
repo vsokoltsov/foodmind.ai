@@ -17,6 +17,7 @@ from app.clients.usda_fdc.client import USDAFoundationClient
 from app.clients.usda_fdc.reader import USDAFoodDataReader
 from app.aggregates import (
     BrandedFood as BrandedFoodAggregate,
+    FoodEntity,
     FoundationFood as FoundationFoodAggregate,
     OpenFoodFactsProduct as OpenFoodFactsAggregate,
 )
@@ -26,7 +27,6 @@ from app.ingestion.elasticsearch_snapshots import (
     publish_snapshot_index,
 )
 from app.ingestion.models import (
-    FoodEntityRecord,
     WikidataAliasRecord,
     WikidataEntityRecord,
     WikidataMediaArticleRecord,
@@ -348,7 +348,7 @@ async def index_staged_source(
         )
         match source:
             case "wikidata":
-                records = iter_models(pipeline, TABLES[source], FoodEntityRecord)
+                records = iter_models(pipeline, TABLES[source], FoodEntity)
                 save = WikidataFoodRepository(
                     elasticsearch,
                     index_name=target_index,

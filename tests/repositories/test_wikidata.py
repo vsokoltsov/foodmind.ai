@@ -1,7 +1,7 @@
 import pytest
 from elasticsearch import AsyncElasticsearch
 
-from app.ingestion.models import FoodEntityRecord, RelatedEntity
+from app.aggregates import FoodEntity, RelatedEntity
 from app.repositories.wikidata import WikidataFoodRepository
 from tests.repositories.conftest import get_document, run
 
@@ -9,9 +9,9 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture
-def food_record() -> FoodEntityRecord:
+def food_record() -> FoodEntity:
     """Provide a representative normalized Wikidata food entity."""
-    return FoodEntityRecord(
+    return FoodEntity(
         id="Q178",
         label="pasta",
         description="Italian food made from flour and water",
@@ -27,7 +27,7 @@ def food_record() -> FoodEntityRecord:
 
 def test_save_records_indexes_complete_document_through_write_alias(
     initialized_elasticsearch: str,
-    food_record: FoodEntityRecord,
+    food_record: FoodEntity,
 ) -> None:
     async def scenario() -> dict:
         async with AsyncElasticsearch(initialized_elasticsearch) as client:
@@ -61,7 +61,7 @@ def test_save_records_indexes_complete_document_through_write_alias(
 
 def test_save_records_replaces_document_with_same_id(
     initialized_elasticsearch: str,
-    food_record: FoodEntityRecord,
+    food_record: FoodEntity,
 ) -> None:
     async def scenario() -> tuple[dict, int]:
         async with AsyncElasticsearch(initialized_elasticsearch) as client:

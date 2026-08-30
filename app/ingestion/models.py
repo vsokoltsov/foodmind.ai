@@ -2,22 +2,6 @@
 
 from pydantic import BaseModel
 
-from app.aggregates import FoodEntity, RelatedEntity
-
-# Kept as a compatibility name for staged dlt tables and existing integrations.
-FoodEntityRecord = FoodEntity
-
-# Kept as a compatibility name for callers importing related Wikidata values
-# from the historical ingestion models module.
-__all__ = [
-    "FoodEntityRecord",
-    "RelatedEntity",
-    "WikidataAliasRecord",
-    "WikidataEntityRecord",
-    "WikidataMediaArticleRecord",
-    "WikidataOriginRecord",
-    "WikidataTaxonomyRecord",
-]
 
 
 class WikidataEntityRecord(BaseModel):

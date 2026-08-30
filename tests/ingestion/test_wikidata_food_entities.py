@@ -7,18 +7,18 @@ import httpx
 import pytest
 from pytest_httpx import HTTPXMock
 
-from app.ingestion.wikidata_food_entities import (
-    _read_models,
-    normalize_food_entity_records,
-    run_pipeline_stages,
-)
+from app.aggregates import FoodEntity
 from app.ingestion.models import (
-    FoodEntityRecord,
     WikidataAliasRecord,
     WikidataEntityRecord,
     WikidataMediaArticleRecord,
     WikidataOriginRecord,
     WikidataTaxonomyRecord,
+)
+from app.ingestion.wikidata_food_entities import (
+    _read_models,
+    normalize_food_entity_records,
+    run_pipeline_stages,
 )
 
 WIKIDATA_URL = "https://query.wikidata.org/sparql"
@@ -235,8 +235,8 @@ def test_dlt_resource_loads_normalized_record_into_duckdb(
     assert normalized_rows == [
         ("Q123", "Test food", "A food used for ingestion tests"),
     ]
-    assert _read_models(pipeline, "food_entities", FoodEntityRecord) == [
-        FoodEntityRecord(
+    assert _read_models(pipeline, "food_entities", FoodEntity) == [
+        FoodEntity(
             id="Q123",
             label="Test food",
             description="A food used for ingestion tests",

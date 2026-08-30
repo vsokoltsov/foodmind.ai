@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.ingestion.models import FoodEntityRecord
+from app.aggregates import FoodEntity
 from app.ingestion.pipeline import (
     IngestionConfig,
     SourceIngestionResult,
@@ -28,11 +28,11 @@ def test_rejects_non_positive_batch_sizes(field: str, value: int) -> None:
 
 def test_indexes_stream_in_bounded_batches() -> None:
     records = iter(
-        [FoodEntityRecord(id=f"Q{index}", label=f"Food {index}") for index in range(5)]
+        [FoodEntity(id=f"Q{index}", label=f"Food {index}") for index in range(5)]
     )
     batches: list[list[str]] = []
 
-    async def save(batch: list[FoodEntityRecord]) -> None:
+    async def save(batch: list[FoodEntity]) -> None:
         batches.append([record.id for record in batch])
 
     count = asyncio.run(index_records(records, save, batch_size=2))
@@ -83,13 +83,13 @@ def test_wikidata_dlt_loader_runs_off_event_loop_and_uses_repository() -> None:
         nonlocal loader_thread
         loader_thread = threading.get_ident()
         return object(), [
-            FoodEntityRecord(id="Q1", label="One"),
-            FoodEntityRecord(id="Q2", label="Two"),
-            FoodEntityRecord(id="Q3", label="Three"),
+            FoodEntity(id="Q1", label="One"),
+            FoodEntity(id="Q2", label="Two"),
+            FoodEntity(id="Q3", label="Three"),
         ]
 
     class Repository:
-        async def save_records(self, batch: list[FoodEntityRecord]) -> None:
+        async def save_records(self, batch: list[FoodEntity]) -> None:
             saved.append([record.id for record in batch])
 
     result = asyncio.run(

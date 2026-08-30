@@ -12,14 +12,13 @@ from pydantic import BaseModel
 
 from app.clients.wikidata_food_entities.client import WikidataFoodEntitiesClient
 from app.ingestion.models import (
-    FoodEntityRecord,
-    RelatedEntity,
     WikidataAliasRecord,
     WikidataEntityRecord,
     WikidataMediaArticleRecord,
     WikidataOriginRecord,
     WikidataTaxonomyRecord,
 )
+from app.aggregates import FoodEntity, RelatedEntity
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 JSON_CONTAINER_TYPES = (list, dict, tuple, set, frozenset)
@@ -264,10 +263,10 @@ def normalize_food_entity_records(
     taxonomy: Sequence[WikidataTaxonomyRecord],
     origins: Sequence[WikidataOriginRecord],
     media_articles: Sequence[WikidataMediaArticleRecord],
-) -> list[FoodEntityRecord]:
+) -> list[FoodEntity]:
     """Join staged Wikidata rows into one normalized record per entity."""
     records = {
-        entity.id: FoodEntityRecord(
+        entity.id: FoodEntity(
             id=entity.id,
             label=entity.label,
             description=entity.description,
@@ -359,10 +358,10 @@ def _expects_json_value(annotation: Any) -> bool:
     name="food_entities",
     primary_key="id",
     write_disposition="replace",
-    columns=FoodEntityRecord,
+    columns=FoodEntity,
 )
 def normalized_food_entities_resource(
-    records: Sequence[FoodEntityRecord],
+    records: Sequence[FoodEntity],
 ) -> Any:
     """Yield final normalized records after all staged tables are loaded."""
     yield [record.model_dump(mode="json") for record in records]
@@ -453,7 +452,7 @@ def run_pipeline_with_records(
     dataset_name: str = "foodmind",
     batch_size: int = 100,
     show_progress: bool = False,
-) -> tuple[WikidataIngestionLoadInfo, list[FoodEntityRecord]]:
+) -> tuple[WikidataIngestionLoadInfo, list[FoodEntity]]:
     """Run the dlt stages and return normalized records for a final sink."""
     pipeline = dlt.pipeline(
         pipeline_name=pipeline_name,
@@ -465,5 +464,5 @@ def run_pipeline_with_records(
         batch_size=batch_size,
         show_progress=show_progress,
     )
-    records = _read_models(pipeline, "food_entities", FoodEntityRecord)
+    records = _read_models(pipeline, "food_entities", FoodEntity)
     return load_info, records

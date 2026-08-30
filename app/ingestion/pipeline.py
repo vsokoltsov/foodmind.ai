@@ -16,7 +16,7 @@ from app.clients.openfoodfacts.client import OpenFoodFactsClient
 from app.clients.openfoodfacts.reader import OpenFoodFactsReader
 from app.clients.usda_fdc.client import USDAFoundationClient
 from app.clients.usda_fdc.reader import USDAFoodDataReader
-from app.ingestion.models import FoodEntityRecord
+from app.aggregates import FoodEntity
 from app.ingestion.wikidata_food_entities import run_pipeline_with_records
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.usda import USDARepository
@@ -26,7 +26,7 @@ from app.storage.factory import create_artifact_store
 RecordT = TypeVar("RecordT", bound=BaseModel)
 SaveBatch = Callable[[list[Any]], Awaitable[None]]
 SourceJob = Callable[[], Awaitable["SourceIngestionResult"]]
-WikidataLoader = Callable[..., tuple[Any, list[FoodEntityRecord]]]
+WikidataLoader = Callable[..., tuple[Any, list[FoodEntity]]]
 
 
 @dataclass(frozen=True)
