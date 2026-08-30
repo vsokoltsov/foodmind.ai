@@ -385,7 +385,7 @@ async def index_staged_source(
                 ).save_records
         return await index_records(
             records,
-            save,
+            save,  # type: ignore[arg-type]
             batch_size=config.repository_batch_size,
         )
 

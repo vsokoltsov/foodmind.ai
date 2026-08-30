@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from elasticsearch import AsyncElasticsearch
 
@@ -59,10 +59,10 @@ async def prepare_snapshot_index(
     staging_dir: Path,
 ) -> str:
     """Create a fresh unaliased physical index for one ingestion attempt."""
-    aliases = dict(await client.indices.get_alias(name=alias))
+    aliases = cast(dict[str, Any], await client.indices.get_alias(name=alias))
     active = _active_index(aliases, alias)
-    mappings = dict(await client.indices.get_mapping(index=active))
-    settings = dict(await client.indices.get_settings(index=active))
+    mappings = cast(dict[str, Any], await client.indices.get_mapping(index=active))
+    settings = cast(dict[str, Any], await client.indices.get_settings(index=active))
     schema_version = mappings[active].get("mappings", {}).get("_meta", {}).get(
         "schema_version", "v1"
     )
@@ -103,7 +103,9 @@ async def publish_snapshot_index(
     aggregate_alias: str = "food-entities",
 ) -> None:
     """Atomically move source and aggregate aliases to a validated candidate."""
-    current_aliases = dict(await client.indices.get_alias(name=alias))
+    current_aliases = cast(
+        dict[str, Any], await client.indices.get_alias(name=alias)
+    )
     current_indices = list(current_aliases)
     actions: list[dict[str, Any]] = []
     for index in current_indices:

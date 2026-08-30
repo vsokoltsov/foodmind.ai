@@ -1,6 +1,7 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import Any, Literal
 from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 RAW_DATA_DIR = Path("data/raw")
 USER_AGENT = "foodmind-ai/0.1 (portfolio data ingestion; contact: local-dev)"

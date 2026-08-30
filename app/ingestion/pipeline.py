@@ -24,7 +24,7 @@ from app.repositories.wikidata import WikidataFoodRepository
 from app.storage.factory import create_artifact_store
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
-SaveBatch = Callable[[list[RecordT]], Awaitable[None]]
+SaveBatch = Callable[[list[Any]], Awaitable[None]]
 SourceJob = Callable[[], Awaitable["SourceIngestionResult"]]
 WikidataLoader = Callable[..., tuple[Any, list[FoodEntityRecord]]]
 
@@ -86,8 +86,8 @@ def _take_batch(
 
 
 async def index_records(
-    records: Iterator[RecordT],
-    save_batch: SaveBatch[RecordT],
+    records: Iterator[Any],
+    save_batch: SaveBatch,
     *,
     batch_size: int,
 ) -> int:
