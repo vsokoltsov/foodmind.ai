@@ -1,6 +1,7 @@
 """Application configuration loaded from environment variables."""
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
     )
 
     ELASTICSEARCH_URL: str = "http://localhost:9200"
+    INGESTION_ARTIFACT_STORAGE: Literal["local", "gcs"] = "local"
+    GCS_BUCKET: str | None = None
+    GCS_PREFIX: str = "foodmind/ingestion"
+    GCP_PROJECT_ID: str | None = None
 
 
 @lru_cache(maxsize=1)
