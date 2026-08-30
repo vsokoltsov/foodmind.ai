@@ -22,9 +22,26 @@ markers = [
     "integration: tests that require Docker and external service containers",
 ]
 
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+exclude = [".venv", ".dlt", "data"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+ignore = ["E731"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+include = ["app"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
     "pytest-httpx>=0.36.2",
+    "ruff>=0.16.5",
     "testcontainers[elasticsearch]>=4.15.0",
+    "ty>=0.0.75",
 ]
