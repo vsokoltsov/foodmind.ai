@@ -17,3 +17,12 @@ data/reports/
 *.duckdb
 .env
 gcp.json
+
+# Terraform local state and plans
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl
+terraform.tfvars
