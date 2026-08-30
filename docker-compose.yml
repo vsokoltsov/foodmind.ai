@@ -78,8 +78,14 @@ services:
       - /etc/kestra/application.yaml
       - --plugins
       - /app/plugins
+    env_file: .env
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
+      INGESTION_ARTIFACT_STORAGE: ${INGESTION_ARTIFACT_STORAGE:-local}
+      GCS_BUCKET: ${GCS_BUCKET:-}
+      GCS_PREFIX: ${GCS_PREFIX:-foodmind/ingestion}
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+      GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/gcp/gcp.json
       KESTRA_BASIC_AUTH_USERNAME: ${KESTRA_BASIC_AUTH_USERNAME:-admin@foodmind.local}
       KESTRA_BASIC_AUTH_PASSWORD: ${KESTRA_BASIC_AUTH_PASSWORD:-Foodmind123}
     expose:
@@ -89,6 +95,7 @@ services:
       - kestra-data:/app/storage
       - kestra-dlt-data:/dlt
       - ./data:/data
+      - ./gcp.json:/var/secrets/gcp/gcp.json:ro
       - ./:/workspace:ro
       - ./infra/kestra/application.yaml:/etc/kestra/application.yaml:ro
       - ./infra/kestra/flows:/app/flows:ro
