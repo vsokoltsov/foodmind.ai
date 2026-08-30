@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 from itertools import islice
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import httpx
 from elasticsearch import AsyncElasticsearch
@@ -21,6 +21,7 @@ from app.ingestion.wikidata_food_entities import run_pipeline_with_records
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.usda import USDARepository
 from app.repositories.wikidata import WikidataFoodRepository
+from app.storage.factory import create_artifact_store
 
 RecordT = TypeVar("RecordT", bound=BaseModel)
 SaveBatch = Callable[[list[RecordT]], Awaitable[None]]
@@ -43,6 +44,10 @@ class IngestionConfig:
     wikidata_dataset_name: str = "foodmind"
     show_progress: bool = False
     force_download: bool = False
+    artifact_storage: Literal["local", "gcs"] = "local"
+    gcs_bucket: str | None = None
+    gcs_prefix: str = "foodmind/ingestion"
+    gcp_project_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate positive batch sizes before any source starts."""
@@ -128,11 +133,17 @@ async def _download_if_needed(
     download: Callable[[], Awaitable[Any]],
     *,
     force: bool,
+    artifact_key: str,
+    store: Any,
 ) -> None:
     """Download a source archive only when it is absent or explicitly forced."""
+    remote_exists = await store.exists(artifact_key)
     if force or not destination.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
         await download()
+        await store.upload(destination, artifact_key)
+    elif not remote_exists:
+        await store.upload(destination, artifact_key)
 
 
 async def ingest_usda_foundations(
@@ -142,10 +153,18 @@ async def ingest_usda_foundations(
     config: IngestionConfig,
 ) -> SourceIngestionResult:
     """Download, stream, and index USDA Foundation Foods."""
+    store = create_artifact_store(
+        config.artifact_storage,
+        bucket=config.gcs_bucket,
+        prefix=config.gcs_prefix,
+        project=config.gcp_project_id,
+    )
     await _download_if_needed(
         config.foundation_archive,
         partial(client.get_foundations, str(config.foundation_archive)),
         force=config.force_download,
+        artifact_key=f"usda-foundation/{config.foundation_archive.name}",
+        store=store,
     )
     count = await index_records(
         reader.iter_foundation_foods(config.foundation_archive),
@@ -162,10 +181,18 @@ async def ingest_usda_branded(
     config: IngestionConfig,
 ) -> SourceIngestionResult:
     """Download, stream, and index USDA Branded Foods."""
+    store = create_artifact_store(
+        config.artifact_storage,
+        bucket=config.gcs_bucket,
+        prefix=config.gcs_prefix,
+        project=config.gcp_project_id,
+    )
     await _download_if_needed(
         config.branded_archive,
         partial(client.get_branded, str(config.branded_archive)),
         force=config.force_download,
+        artifact_key=f"usda-branded/{config.branded_archive.name}",
+        store=store,
     )
     count = await index_records(
         reader.iter_branded_foods(config.branded_archive),
@@ -182,6 +209,12 @@ async def ingest_openfoodfacts(
     config: IngestionConfig,
 ) -> SourceIngestionResult:
     """Download, stream, and index Open Food Facts products."""
+    store = create_artifact_store(
+        config.artifact_storage,
+        bucket=config.gcs_bucket,
+        prefix=config.gcs_prefix,
+        project=config.gcp_project_id,
+    )
     await _download_if_needed(
         config.openfoodfacts_archive,
         partial(
@@ -190,6 +223,8 @@ async def ingest_openfoodfacts(
             show_progress=config.show_progress,
         ),
         force=config.force_download,
+        artifact_key=f"openfoodfacts/{config.openfoodfacts_archive.name}",
+        store=store,
     )
     count = await index_records(
         reader.iter_products(config.openfoodfacts_archive),

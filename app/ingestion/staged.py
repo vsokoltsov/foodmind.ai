@@ -43,6 +43,8 @@ from app.ingestion.wikidata_food_entities import (
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.usda import USDARepository
 from app.repositories.wikidata import WikidataFoodRepository
+from app.storage.factory import create_artifact_store as build_artifact_store
+from app.storage.protocol import ArtifactStore
 
 SourceName = Literal[
     "wikidata",
@@ -68,6 +70,10 @@ class StagedIngestionConfig:
     wikidata_batch_size: int = 100
     show_progress: bool = False
     force_download: bool = False
+    artifact_storage: Literal["local", "gcs"] = "local"
+    gcs_bucket: str | None = None
+    gcs_prefix: str = "foodmind/ingestion"
+    gcp_project_id: str | None = None
 
     def __post_init__(self) -> None:
         """Reject invalid batch sizes before a stage mutates state."""
@@ -95,6 +101,21 @@ INDEX_ALIASES: dict[SourceName, str] = {
     "usda-branded": "usda-branded-foods",
     "openfoodfacts": "openfoodfacts-products",
 }
+
+
+def artifact_key(source: SourceName, path: Path) -> str:
+    """Return the stable object key used for one source archive."""
+    return f"{source}/{path.name}"
+
+
+def create_artifact_store(config: StagedIngestionConfig) -> ArtifactStore:
+    """Create the configured local or GCS artifact backend."""
+    return build_artifact_store(
+        config.artifact_storage,
+        bucket=config.gcs_bucket,
+        prefix=config.gcs_prefix,
+        project=config.gcp_project_id,
+    )
 
 
 def create_pipeline(source: SourceName, config: StagedIngestionConfig) -> Any:
@@ -262,6 +283,7 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
     """Download an archive when absent, preserving it for subsequent stages."""
     read_timeout = 900.0 if source == "openfoodfacts" else 300.0
     timeout = httpx.Timeout(connect=30.0, read=read_timeout, write=30.0, pool=30.0)
+    store = create_artifact_store(config)
     async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
         match source:
             case "usda-foundation":
@@ -283,10 +305,30 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
                 raise ValueError(
                     "Wikidata is queried directly and has no archive download"
                 )
+        key = artifact_key(source, path)
+        remote_exists = await store.exists(key)
         if config.force_download or not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
+            await store.upload(path, key)
+        elif not remote_exists:
+            await store.upload(path, key)
         return path
+
+
+async def materialize_source(source: SourceName, config: StagedIngestionConfig) -> Path:
+    """Ensure an archive is available locally for a transform stage."""
+    if source == "wikidata":
+        raise ValueError("Wikidata has no archive to materialize")
+    path = {
+        "usda-foundation": config.foundation_archive,
+        "usda-branded": config.branded_archive,
+        "openfoodfacts": config.openfoodfacts_archive,
+    }[source]
+    store = create_artifact_store(config)
+    if not path.exists():
+        await store.download(artifact_key(source, path), path)
+    return path
 
 
 async def index_staged_source(
@@ -355,8 +397,17 @@ async def validate_staged_source(
     """Validate a candidate snapshot and publish it through stable aliases."""
     pipeline = create_pipeline(source, config)
     dataset = pipeline.dataset()
-    staged = int(
+    # Elasticsearch stores one document per primary key.  A source may contain
+    # repeated rows for the same entity (Open Food Facts currently has such
+    # duplicates), and indexing those rows replaces the previous document.
+    # Validate against the number of unique IDs rather than the raw row count.
+    staged_rows = int(
         dataset(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
+    )
+    staged = int(
+        dataset(
+            f"SELECT COUNT(DISTINCT id) FROM {TABLES[source]}"
+        ).fetchscalar()
     )
     async with AsyncElasticsearch(config.elasticsearch_url) as elasticsearch:
         candidate = await pending_snapshot_index(
@@ -375,6 +426,7 @@ async def validate_staged_source(
             )
     if staged != indexed:
         raise RuntimeError(
-            f"{source} count mismatch: staging={staged}, elasticsearch={indexed}"
+            f"{source} count mismatch: staging_unique={staged}, "
+            f"staging_rows={staged_rows}, elasticsearch={indexed}"
         )
     return staged, indexed

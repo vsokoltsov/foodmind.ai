@@ -23,6 +23,7 @@ from app.ingestion.staged import (
     extract_wikidata_normalized,
     index_staged_source,
     load_pending,
+    materialize_source,
     normalize_pending,
     validate_staged_source,
 )
@@ -114,6 +115,10 @@ def _stage_config(args: argparse.Namespace) -> StagedIngestionConfig:
         wikidata_batch_size=args.wikidata_batch_size,
         show_progress=args.show_progress,
         force_download=args.force_download,
+        artifact_storage=get_settings().INGESTION_ARTIFACT_STORAGE,
+        gcs_bucket=get_settings().GCS_BUCKET,
+        gcs_prefix=get_settings().GCS_PREFIX,
+        gcp_project_id=get_settings().GCP_PROJECT_ID,
     )
 
 
@@ -136,6 +141,7 @@ async def _run_stage(
     if stage == "transform" and source == "wikidata":
         return await asyncio.to_thread(extract_wikidata_normalized, config)
     if stage == "transform":
+        await materialize_source(source, config)
         return await asyncio.to_thread(extract_source_documents, source, config)
     if stage.startswith("normalize") or stage == "normalize":
         return await asyncio.to_thread(normalize_pending, source, config)
@@ -166,6 +172,10 @@ def _run_all(args: argparse.Namespace) -> None:
                 wikidata_dataset_name=args.dataset_name,
                 show_progress=args.show_progress,
                 force_download=args.force_download,
+                artifact_storage=settings.INGESTION_ARTIFACT_STORAGE,
+                gcs_bucket=settings.GCS_BUCKET,
+                gcs_prefix=settings.GCS_PREFIX,
+                gcp_project_id=settings.GCP_PROJECT_ID,
             )
         )
     )
