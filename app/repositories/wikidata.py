@@ -1,11 +1,13 @@
 """Elasticsearch persistence for normalized Wikidata food entities."""
 
 from dataclasses import dataclass
+from typing import Any, cast
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 
 from app.aggregates import FoodEntity
+from app.repositories.queries import WikidataFoodQuery
 
 
 @dataclass
@@ -34,3 +36,44 @@ class WikidataFoodRepository:
             ),
             raise_on_error=True,
         )
+
+    async def get_by_id(self, entity_id: str) -> FoodEntity | None:
+        """Retrieve one food concept by its Wikidata identifier."""
+        response = await self.client.get(
+            index=self.index_name,
+            id=f"wikidata:{entity_id.removeprefix('wikidata:')}",
+        )
+        if not response.get("found", True):
+            return None
+        source = dict(response["_source"])
+        source["id"] = str(source["id"]).removeprefix("wikidata:")
+        source.pop("source", None)
+        source.pop("entity_type", None)
+        return FoodEntity.model_validate(source)
+
+    async def search(self, query: WikidataFoodQuery) -> list[FoodEntity]:
+        """Search food concepts by text and related cuisine or country."""
+        filters: list[dict[str, object]] = []
+        if query.cuisine_id:
+            filters.append({"term": {"cuisines.id": query.cuisine_id}})
+        if query.country_id:
+            filters.append({"term": {"countries.id": query.country_id}})
+        body: dict[str, object] = {"bool": {"filter": filters}}
+        if query.text:
+            body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "aliases"]}}]  # type: ignore[index]
+        response = await self.client.search(
+            index=self.index_name,
+            query=body,
+            from_=query.offset,
+            size=query.limit,
+        )
+        return [self._from_hit(hit) for hit in response["hits"]["hits"]]
+
+    @staticmethod
+    def _from_hit(hit: dict[str, object]) -> FoodEntity:
+        """Convert an Elasticsearch hit into a domain entity."""
+        source = cast(dict[str, Any], hit["_source"])
+        source["id"] = str(source["id"]).removeprefix("wikidata:")
+        source.pop("source", None)
+        source.pop("entity_type", None)
+        return FoodEntity.model_validate(source)
