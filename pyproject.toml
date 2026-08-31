@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.27.0",
     "ijson>=3.5.1",
     "pydantic>=2.8.0",
+    "pydantic-ai>=0.4.0",
     "pydantic-settings>=2.15.0",
     "tqdm>=4.67.1",
 ]
@@ -29,7 +30,7 @@ exclude = [".venv", ".dlt", "data"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
-ignore = ["E731"]
+ignore = ["E402", "E731"]
 
 [tool.ty.environment]
 python-version = "3.13"
