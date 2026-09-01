@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, cast
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
 
 from app.aggregates import FoodEntity
@@ -39,10 +39,13 @@ class WikidataFoodRepository:
 
     async def get_by_id(self, entity_id: str) -> FoodEntity | None:
         """Retrieve one food concept by its Wikidata identifier."""
-        response = await self.client.get(
-            index=self.index_name,
-            id=f"wikidata:{entity_id.removeprefix('wikidata:')}",
-        )
+        try:
+            response = await self.client.get(
+                index=self.index_name,
+                id=f"wikidata:{entity_id.removeprefix('wikidata:')}",
+            )
+        except NotFoundError:
+            return None
         if not response.get("found", True):
             return None
         source = dict(response["_source"])

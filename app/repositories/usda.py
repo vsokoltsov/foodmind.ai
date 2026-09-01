@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
 
 from app.aggregates import (
@@ -84,7 +84,10 @@ class USDARepository:
         return await self._search(self.branded_index_name, query, BrandedFoodAggregate)
 
     async def _get(self, index: str, fdc_id: int | str, model: type[FoundationFoodAggregate] | type[BrandedFoodAggregate]):
-        response = await self.client.get(index=index, id=f"usda-fdc:{fdc_id}")
+        try:
+            response = await self.client.get(index=index, id=f"usda-fdc:{fdc_id}")
+        except NotFoundError:
+            return None
         if not response.get("found", True):
             return None
         return model.model_validate(response["_source"])

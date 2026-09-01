@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
 
 from app.aggregates import OpenFoodFactsProduct as OpenFoodFactsAggregate
@@ -42,7 +42,12 @@ class OpenFoodFactsRepository:
     async def get_by_id(self, product_id: str) -> OpenFoodFactsAggregate | None:
         """Retrieve one product by its barcode or canonical product ID."""
         document_id = product_id.removeprefix("openfoodfacts:")
-        response = await self.client.get(index=self.index_name, id=f"openfoodfacts:{document_id}")
+        try:
+            response = await self.client.get(
+                index=self.index_name, id=f"openfoodfacts:{document_id}"
+            )
+        except NotFoundError:
+            return None
         if not response.get("found", True):
             return None
         return OpenFoodFactsAggregate.model_validate(response["_source"])
