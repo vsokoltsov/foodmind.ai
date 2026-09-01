@@ -21,6 +21,7 @@ pythonpath = ["."]
 addopts = ["--import-mode=importlib"]
 markers = [
     "integration: tests that require Docker and external service containers",
+    "evaluation: tests that call an LLM judge against a fixture catalog",
 ]
 
 [tool.ruff]
