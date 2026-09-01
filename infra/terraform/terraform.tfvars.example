@@ -1,3 +1,7 @@
 project_id  = "your-gcp-project-id"
 bucket_name = "your-globally-unique-foodmind-artifacts"
 region      = "europe-west3"
+
+# GitHub Actions secret configuration. Keep the API key out of this file.
+github_owner      = "vsokoltsov"
+github_repository = "foodmind.ai"

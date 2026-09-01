@@ -25,3 +25,29 @@ variable "force_destroy" {
   type        = bool
   default     = false
 }
+
+variable "github_owner" {
+  description = "GitHub organization or user that owns the repository."
+  type        = string
+  default     = "vsokoltsov"
+}
+
+variable "github_repository" {
+  description = "GitHub repository name that receives the Actions secret."
+  type        = string
+  default     = "foodmind.ai"
+}
+
+variable "github_token" {
+  description = "GitHub token with repository Actions-secret administration permission."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key stored as the repository OPENAI_API_KEY Actions secret."
+  type        = string
+  sensitive   = true
+  default     = null
+}
