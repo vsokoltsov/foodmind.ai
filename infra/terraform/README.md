@@ -1,7 +1,8 @@
 # FoodMind infrastructure
 
 This configuration provisions the GCS ingestion bucket and can manage the
-repository GitHub Actions secret used by the LLM evaluation job.
+repository GitHub Actions secret used by the LLM evaluation job. GitHub secret
+management is isolated in the `modules/github-actions-secrets` module.
 
 The GitHub provider reads `GITHUB_TOKEN` by default. The token must be allowed
 to administer Actions secrets for `github_repository`. Supply the OpenAI key

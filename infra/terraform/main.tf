@@ -8,15 +8,15 @@ module "ingestion_artifacts" {
   force_destroy         = var.force_destroy
 }
 
+module "github_actions_secrets" {
+  source = "./modules/github-actions-secrets"
+
+  repository     = var.github_repository
+  openai_api_key = var.openai_api_key
+}
+
 resource "google_service_account" "ingestion" {
   account_id   = var.service_account_id
   display_name = "FoodMind ingestion"
   project      = var.project_id
-}
-
-resource "github_actions_secret" "openai_api_key" {
-  count           = var.openai_api_key == null ? 0 : 1
-  repository      = var.github_repository
-  secret_name     = "OPENAI_API_KEY"
-  value           = var.openai_api_key
 }
