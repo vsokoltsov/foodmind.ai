@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ from app.repositories.queries import (
 )
 from app.repositories.usda import USDARepository
 from app.repositories.wikidata import WikidataFoodRepository
+from app.settings import get_settings
 
 
 class FoodSource(StrEnum):
@@ -134,11 +136,18 @@ class FoodSearchAgent:
             "Wikidata entity. Summarize only returned results and never "
             "invent food data."
         )
+        settings = get_settings()
+        model: Any = (
+            _create_model()
+            if settings.OPENAI_API_KEY
+            else settings.OPENAI_MODEL
+        )
         self.agent = Agent(
-            _create_model(),
+            model,
             deps_type=FoodSearchDependencies,
             output_type=FoodSearchAnswer,
             instructions=f"{shared_instructions} {self.instructions or ''}".strip(),
+            defer_model_check=not bool(settings.OPENAI_API_KEY),
         )
         self.agent.tool(self.search_foods)
         self.agent.tool(self.lookup_wikidata_entity)

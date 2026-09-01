@@ -16,7 +16,7 @@ def _create_model() -> OpenAIChatModel:
     )
 
 
-def _create_agent() -> Agent[None, str]:
+def create_foodmind_agent() -> Agent[None, str]:
     """Create the basic text FoodMind agent."""
     return Agent(
         _create_model(),
@@ -27,10 +27,7 @@ def _create_agent() -> Agent[None, str]:
     )
 
 
-foodmind_agent = _create_agent()
-
-
 async def ask_foodmind(prompt: str) -> str:
     """Send one prompt to the FoodMind agent and return its text response."""
-    result = await foodmind_agent.run(prompt)
+    result = await create_foodmind_agent().run(prompt)
     return result.output
