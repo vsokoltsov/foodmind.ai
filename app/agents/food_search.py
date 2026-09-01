@@ -1,7 +1,7 @@
 """Class-based PydanticAI food-search agent and repository tools."""
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from elasticsearch import AsyncElasticsearch
@@ -115,6 +115,7 @@ class FoodSearchDependencies:
         )
 
 
+@dataclass
 class FoodSearchAgent:
     """Search food data through repository-backed PydanticAI tools.
 
@@ -122,18 +123,22 @@ class FoodSearchAgent:
     dependencies remain request-scoped and are supplied to :meth:`run`.
     """
 
-    def __init__(self) -> None:
+    instructions: str | None = None
+    agent: Agent[FoodSearchDependencies, FoodSearchAnswer] = field(init=False)
+
+    def __post_init__(self) -> None:
         """Create the PydanticAI agent and register its tools once."""
-        self.agent: Agent[FoodSearchDependencies, FoodSearchAnswer] = Agent(
+        shared_instructions = (
+            "You search the FoodMind food catalog. Use the search_foods tool "
+            "for catalog questions and lookup_wikidata_entity for a specific "
+            "Wikidata entity. Summarize only returned results and never "
+            "invent food data."
+        )
+        self.agent = Agent(
             _create_model(),
             deps_type=FoodSearchDependencies,
             output_type=FoodSearchAnswer,
-            instructions=(
-                "You search the FoodMind food catalog. Use the search_foods tool "
-                "for catalog questions and lookup_wikidata_entity for a specific "
-                "Wikidata entity. Summarize only returned results and never "
-                "invent food data."
-            ),
+            instructions=f"{shared_instructions} {self.instructions or ''}".strip(),
         )
         self.agent.tool(self.search_foods)
         self.agent.tool(self.lookup_wikidata_entity)
