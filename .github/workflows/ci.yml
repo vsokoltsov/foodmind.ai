@@ -73,19 +73,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Create evaluation indexes
-        run: |
-          for index in \
-            wikidata-food-entities-v1 \
-            usda-foundation-foods-v1 \
-            usda-branded-foods-v1 \
-            openfoodfacts-products-v1; do
-            curl --fail --request PUT "http://localhost:9200/${index}" \
-              --header 'Content-Type: application/json' \
-              --data '{"mappings":{"properties":{"id":{"type":"keyword"},"label":{"type":"text"},"description":{"type":"text"}}}}'
-          done
       - name: Run LLM-as-judge evaluation
         if: ${{ env.OPENAI_API_KEY != '' }}
         env:
           ELASTICSEARCH_URL: http://localhost:9200
-        run: uv run python cmd/evaluate_food_search.py
+        run: uv run pytest -m evaluation -q
