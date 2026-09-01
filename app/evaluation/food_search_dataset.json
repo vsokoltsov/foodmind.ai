@@ -1,0 +1,14 @@
+[
+  {
+    "question": "Find foods matching apple and show their sources.",
+    "reference_answer": "The answer should list relevant apple results returned by the catalog and identify their data sources. It must not invent products that were not returned."
+  },
+  {
+    "question": "Find an Italian food concept and explain which Wikidata record supports it.",
+    "reference_answer": "The answer should use Wikidata results, identify a relevant food concept, and include its returned identifier as evidence."
+  },
+  {
+    "question": "Find a branded product containing chocolate.",
+    "reference_answer": "The answer should return a relevant branded product from USDA or Open Food Facts and clearly identify its source."
+  }
+]
