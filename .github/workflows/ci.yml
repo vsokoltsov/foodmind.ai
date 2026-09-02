@@ -94,7 +94,10 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - name: Load OpenAI API key from Secret Manager
         run: |
-          echo "OPENAI_API_KEY=$(gcloud secrets versions access latest --secret=OPENAI_API_KEY --project=${{ vars.GCP_PROJECT_ID }})" >> "$GITHUB_ENV"
+          OPENAI_KEY="$(gcloud secrets versions access latest --secret=OPENAI_API_KEY --project=${{ vars.GCP_PROJECT_ID }})"
+          echo "::add-mask::$OPENAI_KEY"
+          echo "OPENAI_API_KEY=$OPENAI_KEY" >> "$GITHUB_ENV"
+          unset OPENAI_KEY
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

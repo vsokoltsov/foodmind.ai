@@ -105,7 +105,7 @@ class OrchestratorEvaluationRunner:
                         usage_limits=UsageLimits(request_limit=16, tool_calls_limit=6),
                     )
                     answer = response.output.answer
-                except UsageLimitExceeded as exc:
+                except (UsageLimitExceeded, ValueError) as exc:
                     answer = f"Evaluation stopped before a final answer: {exc}"
                 record = OrchestratorEvaluationRecord(
                     approach=approach,
