@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, UsageLimits
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from app.agents.food_search import FoodSearchDependencies
 from app.agents.orchestrator import FoodMindOrchestrator, OrchestratorDependencies
@@ -97,12 +98,20 @@ class OrchestratorEvaluationRunner:
             orchestrator = FoodMindOrchestrator(instructions=instructions)
             for item in items:
                 dependencies = OrchestratorDependencies.from_repositories(self.repositories)
-                response = await orchestrator.run(item.question, deps=dependencies)
+                try:
+                    response = await orchestrator.run(
+                        item.question,
+                        deps=dependencies,
+                        usage_limits=UsageLimits(request_limit=16, tool_calls_limit=6),
+                    )
+                    answer = response.output.answer
+                except UsageLimitExceeded as exc:
+                    answer = f"Evaluation stopped before a final answer: {exc}"
                 record = OrchestratorEvaluationRecord(
                     approach=approach,
                     question=item.question,
                     reference_answer=item.reference_answer,
-                    agent_answer=response.output.answer,
+                    agent_answer=answer,
                 )
                 results.append((record, await self.judge.evaluate(record)))
         return results

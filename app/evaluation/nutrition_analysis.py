@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, UsageLimits
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from app.agents.food_search import FoodSearchDependencies
 from app.agents.nutrition_analysis import NutritionAnalysisAgent
@@ -96,12 +97,20 @@ class NutritionEvaluationRunner:
             }[approach]
             agent = NutritionAnalysisAgent(instructions=instructions)
             for item in items:
-                response = await agent.run(item.question, deps=self.dependencies)
+                try:
+                    response = await agent.run(
+                        item.question,
+                        deps=self.dependencies,
+                        usage_limits=UsageLimits(request_limit=12, tool_calls_limit=4),
+                    )
+                    answer = response.output.answer
+                except UsageLimitExceeded as exc:
+                    answer = f"Evaluation stopped before a final answer: {exc}"
                 record = NutritionEvaluationRecord(
                     approach=approach,
                     question=item.question,
                     reference_answer=item.reference_answer,
-                    agent_answer=response.output.answer,
+                    agent_answer=answer,
                 )
                 results.append((record, await self.judge.evaluate(record)))
         return results

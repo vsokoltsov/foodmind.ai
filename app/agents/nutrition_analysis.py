@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -95,10 +95,14 @@ class NutritionAnalysisAgent:
         self.agent.tool(self.analyze_nutrition)
 
     async def run(
-        self, prompt: str, *, deps: FoodSearchDependencies
+        self,
+        prompt: str,
+        *,
+        deps: FoodSearchDependencies,
+        usage_limits: UsageLimits | None = None,
     ) -> AgentRunResult[NutritionAnalysisAnswer]:
         """Run the nutrition agent with request-scoped repositories."""
-        return await self.agent.run(prompt, deps=deps)
+        return await self.agent.run(prompt, deps=deps, usage_limits=usage_limits)
 
     async def analyze_nutrition(
         self,

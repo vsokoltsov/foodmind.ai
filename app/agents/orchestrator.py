@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -120,12 +120,16 @@ class FoodMindOrchestrator:
         return await self.planner.plan(prompt)
 
     async def run(
-        self, prompt: str, *, deps: OrchestratorDependencies
+        self,
+        prompt: str,
+        *,
+        deps: OrchestratorDependencies,
+        usage_limits: UsageLimits | None = None,
     ) -> AgentRunResult[OrchestratorAnswer]:
         """Run one orchestrated request with a fresh delegation budget."""
         deps.reset_budget()
         deps.original_prompt = prompt
-        return await self.agent.run(prompt, deps=deps)
+        return await self.agent.run(prompt, deps=deps, usage_limits=usage_limits)
 
     async def _delegate(
         self,
