@@ -1,0 +1,10 @@
+[
+  {
+    "question": "Compare the chocolate protein bar and the apple juice product. Which has more protein?",
+    "reference_answer": "The answer should identify both returned products and compare their available protein values, naming the source and units. It must not invent missing values."
+  },
+  {
+    "question": "Compare the ingredients and allergens of the chocolate protein bar and apple juice.",
+    "reference_answer": "The answer should report only returned ingredient and allergen facts for both products, clearly identifying any unavailable field."
+  }
+]
