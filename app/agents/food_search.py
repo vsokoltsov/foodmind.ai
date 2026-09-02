@@ -134,7 +134,10 @@ class FoodSearchAgent:
             "You search the FoodMind food catalog. Use the search_foods tool "
             "for catalog questions and lookup_wikidata_entity for a specific "
             "Wikidata entity. Summarize only returned results and never "
-            "invent food data."
+            "invent food data. Call search_foods at most once per request. "
+            "Only call lookup_wikidata_entity for an exact identifier returned "
+            "by search_foods, and call it at most once. After receiving tool "
+            "results, provide the final answer immediately."
         )
         settings = get_settings()
         model: Any = (
