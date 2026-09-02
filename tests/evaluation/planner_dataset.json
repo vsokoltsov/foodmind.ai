@@ -1,0 +1,15 @@
+[
+  {
+    "question": "Compare the chocolate protein bar and apple juice, then recommend which is better for a high-protein diet.",
+    "expected_agents": ["product_comparison", "nutrition_analysis", "food_recommendation"],
+    "expected_dependencies": {
+      "nutrition_analysis": ["product_comparison"],
+      "food_recommendation": ["nutrition_analysis"]
+    }
+  },
+  {
+    "question": "Recommend an Italian food using pasta and explain its cuisine evidence.",
+    "expected_agents": ["food_recommendation"],
+    "expected_dependencies": {}
+  }
+]
