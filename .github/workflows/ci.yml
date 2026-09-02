@@ -43,9 +43,17 @@ jobs:
       - run: make ${{ matrix.suite }}
 
   evaluation:
-    name: food-search LLM evaluation
+    name: ${{ matrix.agent }} LLM evaluation
     needs: tests
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - agent: food-search
+            target: evaluation-food-search
+          - agent: nutrition-analysis
+            target: evaluation-nutrition-analysis
     # Forked pull requests receive an empty value and skip the evaluation step.
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -73,8 +81,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Run LLM-as-judge evaluation
+      - name: Run ${{ matrix.agent }} LLM-as-judge evaluation
         if: ${{ env.OPENAI_API_KEY != '' }}
         env:
           ELASTICSEARCH_URL: http://localhost:9200
-        run: uv run pytest -m evaluation -q
+        run: make ${{ matrix.target }}
