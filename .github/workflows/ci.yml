@@ -62,6 +62,8 @@ jobs:
             target: evaluation-orchestrator
           - agent: planner
             target: evaluation-planner
+          - agent: executor
+            target: evaluation-executor
     # Forked pull requests receive an empty value and skip the evaluation step.
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
