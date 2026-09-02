@@ -54,6 +54,8 @@ jobs:
             target: evaluation-food-search
           - agent: nutrition-analysis
             target: evaluation-nutrition-analysis
+          - agent: product-comparison
+            target: evaluation-product-comparison
     # Forked pull requests receive an empty value and skip the evaluation step.
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
