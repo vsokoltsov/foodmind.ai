@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     GCS_BUCKET: str | None = None
     GCS_PREFIX: str = "foodmind/ingestion"
     GCP_PROJECT_ID: str | None = None
+    EVALUATION_ARTIFACT_BUCKET: str | None = None
+    EVALUATION_ARTIFACT_PREFIX: str = "foodmind/evaluation"
 
 
 @lru_cache(maxsize=1)
