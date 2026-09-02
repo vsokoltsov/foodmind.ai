@@ -45,6 +45,8 @@ jobs:
   evaluation:
     name: ${{ matrix.agent }} LLM evaluation
     needs: tests
+    # Secret Manager access is intentionally unavailable to forked pull requests.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -64,9 +66,9 @@ jobs:
             target: evaluation-planner
           - agent: executor
             target: evaluation-executor
-    # Forked pull requests receive an empty value and skip the evaluation step.
-    env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    permissions:
+      contents: read
+      id-token: write
     services:
       elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:9.4.3
@@ -84,6 +86,15 @@ jobs:
           --health-retries 30
     steps:
       - uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Load OpenAI API key from Secret Manager
+        run: |
+          echo "OPENAI_API_KEY=$(gcloud secrets versions access latest --secret=OPENAI_API_KEY --project=${{ vars.GCP_PROJECT_ID }})" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -92,7 +103,6 @@ jobs:
           enable-cache: true
       - run: uv sync --dev
       - name: Run ${{ matrix.agent }} LLM-as-judge evaluation
-        if: ${{ env.OPENAI_API_KEY != '' }}
         env:
           ELASTICSEARCH_URL: http://localhost:9200
         run: make ${{ matrix.target }}
