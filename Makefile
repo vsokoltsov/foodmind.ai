@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test-unit test-integration evaluation test
+.PHONY: lint typecheck test-unit test-integration evaluation evaluation-food-search evaluation-nutrition-analysis test
 
 lint:
 	uv run ruff check app tests
@@ -12,8 +12,13 @@ test-unit:
 test-integration:
 	uv run pytest -m "integration and not evaluation"
 
-evaluation:
-	uv run pytest -m evaluation
+evaluation-food-search:
+	uv run pytest -m evaluation tests/evaluation/test_food_search.py -q
+
+evaluation-nutrition-analysis:
+	uv run pytest -m evaluation tests/evaluation/test_nutrition_analysis.py -q
+
+evaluation: evaluation-food-search evaluation-nutrition-analysis
 
 test:
 	$(MAKE) test-unit test-integration
