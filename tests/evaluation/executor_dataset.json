@@ -1,0 +1,6 @@
+[
+  {
+    "question": "Compare the chocolate protein bar and apple juice, then identify which has more protein.",
+    "reference_answer": "The execution should provide product comparison and nutrition evidence for both returned products, identify their sources, and support the protein conclusion."
+  }
+]
