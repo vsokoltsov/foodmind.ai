@@ -1,0 +1,10 @@
+[
+  {
+    "question": "Recommend an Italian food concept using pasta as the available ingredient.",
+    "reference_answer": "The answer should recommend the returned Italian Wikidata food concept and identify its source and evidence. It must not invent unavailable nutrition facts."
+  },
+  {
+    "question": "Recommend a product containing cocoa that is high in protein, excluding milk.",
+    "reference_answer": "The answer should use returned catalog evidence, report the available protein value, and not claim a milk-free product unless the ingredients support it."
+  }
+]
