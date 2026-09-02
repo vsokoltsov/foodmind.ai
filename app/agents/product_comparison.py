@@ -200,11 +200,19 @@ class ProductComparisonAgent:
         if not rank_by:
             return products
         criterion = rank_by.casefold()
+
+        def value(product: ComparisonProduct) -> float | None:
+            """Find a nutrient value without depending on source casing."""
+            for name, amount in product.nutrients.items():
+                if name.casefold() == criterion or criterion in name.casefold():
+                    return amount
+            return None
+
         return sorted(
             products,
             key=lambda product: (
-                product.nutrients.get(criterion) is not None,
-                product.nutrients.get(criterion) or float("-inf"),
+                value(product) is not None,
+                value(product) or float("-inf"),
             ),
             reverse=True,
         )
