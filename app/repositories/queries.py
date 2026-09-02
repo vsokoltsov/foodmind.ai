@@ -28,6 +28,7 @@ class BrandedFoodQuery(USDAFoodQuery):
     """Search criteria for USDA Branded Foods."""
 
     brand: str | None = None
+    barcode: str | None = None
 
 
 class OpenFoodFactsQuery(SearchQuery):

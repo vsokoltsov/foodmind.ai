@@ -96,6 +96,8 @@ class USDARepository:
         filters: list[dict[str, object]] = []
         if query.category:
             filters.append({"match": {"category": query.category}})
+        if isinstance(query, BrandedFoodQuery) and query.barcode:
+            filters.append({"term": {"gtin_upc": query.barcode}})
         body: dict[str, object] = {"bool": {"filter": filters}}
         if query.text:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "category"]}}]  # type: ignore[index]
