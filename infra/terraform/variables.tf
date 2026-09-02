@@ -14,6 +14,13 @@ variable "bucket_name" {
   type        = string
 }
 
+variable "evaluation_bucket_name" {
+  description = "Optional globally unique bucket for versioned LLM evaluation artifacts."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "service_account_id" {
   description = "Account ID for the Kestra ingestion service account."
   type        = string
@@ -46,8 +53,26 @@ variable "github_token" {
 }
 
 variable "openai_api_key" {
-  description = "OpenAI API key stored as the repository OPENAI_API_KEY Actions secret."
+  description = "OpenAI API key stored in Google Cloud Secret Manager."
   type        = string
   sensitive   = true
   default     = null
+}
+
+variable "github_wif_pool_id" {
+  description = "Workload Identity Federation pool ID for GitHub Actions."
+  type        = string
+  default     = "github-actions"
+}
+
+variable "github_wif_provider_id" {
+  description = "Workload Identity Federation OIDC provider ID."
+  type        = string
+  default     = "github"
+}
+
+variable "github_actions_service_account_id" {
+  description = "Service account ID used by GitHub Actions through WIF."
+  type        = string
+  default     = "foodmind-github-actions"
 }

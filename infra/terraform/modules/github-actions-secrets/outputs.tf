@@ -1,4 +1,8 @@
-output "openai_api_key_secret_name" {
-  description = "Name of the managed OpenAI Actions secret, when configured."
-  value       = var.openai_api_key == null ? null : github_actions_secret.openai_api_key[0].secret_name
+output "managed_variables" {
+  description = "Names of repository variables managed for GCP federation."
+  value = [
+    github_actions_variable.gcp_project_id.variable_name,
+    github_actions_variable.workload_identity_provider.variable_name,
+    github_actions_variable.service_account.variable_name,
+  ]
 }

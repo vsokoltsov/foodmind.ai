@@ -1,7 +1,10 @@
 project_id  = "your-gcp-project-id"
 bucket_name = "your-globally-unique-foodmind-artifacts"
+# Optional bucket for versioned LLM evaluation strategy artifacts.
+evaluation_bucket_name = "your-globally-unique-foodmind-evaluation"
 region      = "europe-west3"
 
 # GitHub Actions secret configuration. Keep the API key out of this file.
 github_owner      = "vsokoltsov"
 github_repository = "foodmind.ai"
+# Set TF_VAR_openai_api_key through the environment; do not commit the key.

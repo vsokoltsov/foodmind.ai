@@ -12,7 +12,8 @@ resource "google_storage_bucket" "this" {
 
   lifecycle_rule {
     condition {
-      age = 90
+      with_state = "ARCHIVED"
+      age        = 90
     }
     action {
       type = "Delete"

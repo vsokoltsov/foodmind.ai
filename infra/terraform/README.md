@@ -1,12 +1,14 @@
 # FoodMind infrastructure
 
-This configuration provisions the GCS ingestion bucket and can manage the
-repository GitHub Actions secret used by the LLM evaluation job. GitHub secret
-management is isolated in the `modules/github-actions-secrets` module.
+This configuration provisions the GCS ingestion bucket, a Google Secret
+Manager secret for the LLM evaluation key, and GitHub Actions Workload
+Identity Federation. GitHub Actions receives only non-sensitive connection
+identifiers as repository variables and reads `OPENAI_API_KEY` from Secret
+Manager at runtime.
 
 The GitHub provider reads `GITHUB_TOKEN` by default. The token must be allowed
-to administer Actions secrets for `github_repository`. Supply the OpenAI key
-through an environment variable rather than committing it:
+to administer repository Actions variables. Supply the OpenAI key through an
+environment variable rather than committing it:
 
 ```shell
 export GITHUB_TOKEN="..."
@@ -15,7 +17,8 @@ terraform init
 terraform apply
 ```
 
-When `TF_VAR_openai_api_key` is unset, Terraform does not create or modify the
-`OPENAI_API_KEY` repository secret. The key is sensitive, but Terraform state
-contains the value needed to manage the resource; use encrypted remote state
-and restrict access to it.
+When `TF_VAR_openai_api_key` is unset, Terraform does not create the secret.
+The key is sensitive, and Terraform state contains the secret version value;
+use encrypted remote state and restrict access to it. GitHub Actions exchanges
+its OIDC token for short-lived Google credentials, so no service-account JSON
+key is stored in GitHub.

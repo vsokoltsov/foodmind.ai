@@ -1,11 +1,19 @@
 variable "repository" {
-  description = "GitHub repository name that receives the Actions secret."
+  description = "GitHub repository name that receives Actions configuration variables."
   type        = string
 }
 
-variable "openai_api_key" {
-  description = "OpenAI API key stored as the repository OPENAI_API_KEY Actions secret."
+variable "gcp_project_id" {
+  description = "Google Cloud project ID exposed as a non-sensitive Actions variable."
   type        = string
-  sensitive   = true
-  default     = null
+}
+
+variable "workload_identity_provider" {
+  description = "Workload Identity provider resource name exposed as an Actions variable."
+  type        = string
+}
+
+variable "gcp_service_account_email" {
+  description = "GitHub Actions service account email exposed as an Actions variable."
+  type        = string
 }
