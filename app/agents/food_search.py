@@ -3,14 +3,14 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoodEntity, FoundationFood, OpenFoodFactsProduct
-from app.agents.foodmind import _create_model
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.queries import (
     BrandedFoodQuery,
@@ -140,11 +140,12 @@ class FoodSearchAgent:
             "results, provide the final answer immediately."
         )
         settings = get_settings()
-        model: Any = (
-            _create_model()
-            if settings.OPENAI_API_KEY
-            else settings.OPENAI_MODEL
-        )
+        model = settings.OPENAI_MODEL
+        if settings.OPENAI_API_KEY:
+            model = OpenAIChatModel(
+                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
+            )
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -296,12 +297,3 @@ class FoodSearchAgent:
             entity_type=entity_type,
             description=food.description,
         )
-
-
-def create_food_search_agent() -> FoodSearchAgent:
-    """Create a configured food-search agent.
-
-    Returns:
-        A new agent instance with its repository tools registered.
-    """
-    return FoodSearchAgent()

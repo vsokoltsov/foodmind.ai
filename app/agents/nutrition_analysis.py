@@ -3,13 +3,13 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoundationFood, Nutrition
-from app.agents.foodmind import _create_model
 from app.agents.food_search import FoodSearchDependencies
 from app.repositories.queries import BrandedFoodQuery, USDAFoodQuery
 from app.settings import get_settings
@@ -73,7 +73,12 @@ class NutritionAnalysisAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model: Any = _create_model() if settings.OPENAI_API_KEY else settings.OPENAI_MODEL
+        model = settings.OPENAI_MODEL
+        if settings.OPENAI_API_KEY:
+            model = OpenAIChatModel(
+                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
+            )
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -170,8 +175,3 @@ class NutritionAnalysisAgent:
         elif amount is not None and unit in {"µg", "ug", "mcg"}:
             amount, unit = amount / 1_000_000, "g"
         return NutritionValue(name=nutrient.name, amount=amount, unit=unit)
-
-
-def create_nutrition_analysis_agent() -> NutritionAnalysisAgent:
-    """Create a configured nutrition analysis agent."""
-    return NutritionAnalysisAgent()

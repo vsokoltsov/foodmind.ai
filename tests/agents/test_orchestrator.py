@@ -3,7 +3,8 @@
 import pytest
 
 from app.agents.food_search import FoodSearchDependencies
-from app.agents.orchestrator import DelegationTask, OrchestratorDependencies
+from app.agents.orchestrator import OrchestratorDependencies
+from app.agents.planner import DelegationTask, ExecutionPlan, AgentName, PlannedTask
 
 
 def test_delegation_task_requires_structured_objective() -> None:
@@ -15,6 +16,27 @@ def test_delegation_task_requires_structured_objective() -> None:
     )
 
     assert task.required_fields == ["protein", "allergens"]
+
+
+def test_execution_plan_rejects_cycles() -> None:
+    """Planner output cannot contain cyclic task dependencies."""
+    with pytest.raises(ValueError, match="acyclic"):
+        ExecutionPlan(
+            tasks=[
+                PlannedTask(
+                    id="search",
+                    agent=AgentName.FOOD_SEARCH,
+                    task=DelegationTask(objective="Search"),
+                    depends_on=["compare"],
+                ),
+                PlannedTask(
+                    id="compare",
+                    agent=AgentName.PRODUCT_COMPARISON,
+                    task=DelegationTask(objective="Compare"),
+                    depends_on=["search"],
+                ),
+            ]
+        )
 
 
 def _dependencies() -> OrchestratorDependencies:

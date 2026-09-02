@@ -2,13 +2,13 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.agents.food_search import FoodSearchDependencies
-from app.agents.foodmind import _create_model
 from app.aggregates import BrandedFood, OpenFoodFactsProduct
 from app.repositories.queries import BrandedFoodQuery, OpenFoodFactsQuery
 from app.settings import get_settings
@@ -73,7 +73,12 @@ class ProductComparisonAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model: Any = _create_model() if settings.OPENAI_API_KEY else settings.OPENAI_MODEL
+        model = settings.OPENAI_MODEL
+        if settings.OPENAI_API_KEY:
+            model = OpenAIChatModel(
+                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
+            )
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -216,8 +221,3 @@ class ProductComparisonAgent:
             ),
             reverse=True,
         )
-
-
-def create_product_comparison_agent() -> ProductComparisonAgent:
-    """Create a configured product comparison agent."""
-    return ProductComparisonAgent()

@@ -5,6 +5,8 @@ from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.agents.food_recommendation import (
     FoodRecommendationAgent,
@@ -23,7 +25,7 @@ from app.agents.product_comparison import (
     ProductComparisonAgent,
     ProductComparisonAnswer,
 )
-from app.agents.foodmind import _create_model
+from app.agents.planner import DelegationTask, ExecutionPlan, FoodMindPlanner
 from app.settings import get_settings
 
 
@@ -32,20 +34,6 @@ class OrchestratorAnswer(BaseModel):
 
     answer: str
     used_agents: list[str] = Field(default_factory=list)
-
-
-class DelegationTask(BaseModel):
-    """Structured task passed from the orchestrator to a specialist agent."""
-
-    objective: str = Field(min_length=1, description="Specific work to perform")
-    context: str | None = Field(
-        default=None,
-        description="Relevant user requirements or results from earlier agents",
-    )
-    required_fields: list[str] = Field(
-        default_factory=list,
-        description="Facts or fields the specialist must return",
-    )
 
 
 @dataclass
@@ -96,12 +84,19 @@ class FoodMindOrchestrator:
     """Route a user request to one or more guarded specialist agents."""
 
     instructions: str | None = None
+    planner: FoodMindPlanner = field(init=False)
     agent: Agent[OrchestratorDependencies, OrchestratorAnswer] = field(init=False)
 
     def __post_init__(self) -> None:
         """Create the orchestrator and register specialist-agent tools."""
         settings = get_settings()
-        model: Any = _create_model() if settings.OPENAI_API_KEY else settings.OPENAI_MODEL
+        self.planner = FoodMindPlanner()
+        model = settings.OPENAI_MODEL
+        if settings.OPENAI_API_KEY:
+            model= OpenAIChatModel(
+                model_name=settings.OPENAI_MODEL.removeprefix("openai:"), 
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+            )
         self.agent = Agent(
             model,
             deps_type=OrchestratorDependencies,
@@ -119,6 +114,10 @@ class FoodMindOrchestrator:
         self.agent.tool(self.run_nutrition_analysis)
         self.agent.tool(self.run_product_comparison)
         self.agent.tool(self.run_food_recommendation)
+
+    async def create_plan(self, prompt: str) -> AgentRunResult[ExecutionPlan]:
+        """Create a structured plan before executing specialist tools."""
+        return await self.planner.plan(prompt)
 
     async def run(
         self, prompt: str, *, deps: OrchestratorDependencies
@@ -199,8 +198,3 @@ class FoodMindOrchestrator:
             task,
         )
         return result.output
-
-
-def create_orchestrator() -> FoodMindOrchestrator:
-    """Create a configured FoodMind orchestrator."""
-    return FoodMindOrchestrator()

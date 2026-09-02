@@ -2,14 +2,14 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoodEntity, FoundationFood, OpenFoodFactsProduct
 from app.agents.food_search import FoodSearchDependencies
-from app.agents.foodmind import _create_model
 from app.repositories.queries import BrandedFoodQuery, OpenFoodFactsQuery, USDAFoodQuery, WikidataFoodQuery
 from app.settings import get_settings
 
@@ -63,7 +63,12 @@ class FoodRecommendationAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model: Any = _create_model() if settings.OPENAI_API_KEY else settings.OPENAI_MODEL
+        model = settings.OPENAI_MODEL
+        if settings.OPENAI_API_KEY:
+            model = OpenAIChatModel(
+                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
+            )
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -195,8 +200,3 @@ class FoodRecommendationAgent:
                 return amount / 1_000_000
             case _:
                 return amount
-
-
-def create_food_recommendation_agent() -> FoodRecommendationAgent:
-    """Create a configured food recommendation agent."""
-    return FoodRecommendationAgent()
