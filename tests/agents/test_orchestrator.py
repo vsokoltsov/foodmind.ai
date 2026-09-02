@@ -3,7 +3,18 @@
 import pytest
 
 from app.agents.food_search import FoodSearchDependencies
-from app.agents.orchestrator import OrchestratorDependencies
+from app.agents.orchestrator import DelegationTask, OrchestratorDependencies
+
+
+def test_delegation_task_requires_structured_objective() -> None:
+    """Delegation requests expose objective, context, and required fields."""
+    task = DelegationTask(
+        objective="Compare products",
+        context="Use the products returned by search",
+        required_fields=["protein", "allergens"],
+    )
+
+    assert task.required_fields == ["protein", "allergens"]
 
 
 def _dependencies() -> OrchestratorDependencies:

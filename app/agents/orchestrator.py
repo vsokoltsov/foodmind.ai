@@ -23,8 +23,8 @@ from app.agents.product_comparison import (
     ProductComparisonAgent,
     ProductComparisonAnswer,
 )
-from app.settings import get_settings
 from app.agents.foodmind import _create_model
+from app.settings import get_settings
 
 
 class OrchestratorAnswer(BaseModel):
@@ -32,6 +32,20 @@ class OrchestratorAnswer(BaseModel):
 
     answer: str
     used_agents: list[str] = Field(default_factory=list)
+
+
+class DelegationTask(BaseModel):
+    """Structured task passed from the orchestrator to a specialist agent."""
+
+    objective: str = Field(min_length=1, description="Specific work to perform")
+    context: str | None = Field(
+        default=None,
+        description="Relevant user requirements or results from earlier agents",
+    )
+    required_fields: list[str] = Field(
+        default_factory=list,
+        description="Facts or fields the specialist must return",
+    )
 
 
 @dataclass
@@ -46,6 +60,7 @@ class OrchestratorDependencies:
     max_total_calls: int = 6
     max_calls_per_agent: int = 2
     calls: dict[str, int] = field(default_factory=dict)
+    original_prompt: str | None = None
 
     @classmethod
     def from_repositories(
@@ -63,6 +78,7 @@ class OrchestratorDependencies:
     def reset_budget(self) -> None:
         """Reset call counters before starting a new user request."""
         self.calls.clear()
+        self.original_prompt = None
 
     def authorize(self, agent_name: str) -> None:
         """Enforce total and per-agent delegation limits."""
@@ -109,6 +125,7 @@ class FoodMindOrchestrator:
     ) -> AgentRunResult[OrchestratorAnswer]:
         """Run one orchestrated request with a fresh delegation budget."""
         deps.reset_budget()
+        deps.original_prompt = prompt
         return await self.agent.run(prompt, deps=deps)
 
     async def _delegate(
@@ -116,26 +133,33 @@ class FoodMindOrchestrator:
         ctx: RunContext[OrchestratorDependencies],
         name: str,
         call: Callable[[str], Awaitable[Any]],
-        instruction: str,
+        task: DelegationTask,
     ) -> Any:
         """Authorize and execute one specialist-agent call."""
         ctx.deps.authorize(name)
-        return await call(instruction)
+        prompt = task.objective
+        if ctx.deps.original_prompt:
+            prompt += f"\n\nOriginal user request:\n{ctx.deps.original_prompt}"
+        if task.context:
+            prompt += f"\n\nRelevant context:\n{task.context}"
+        if task.required_fields:
+            prompt += "\n\nRequired fields: " + ", ".join(task.required_fields)
+        return await call(prompt)
 
     async def run_food_search(
-        self, ctx: RunContext[OrchestratorDependencies], instruction: str
+        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
     ) -> FoodSearchAnswer:
         """Delegate food discovery to the food-search agent."""
         result = await self._delegate(
             ctx,
             "food_search",
             lambda prompt: ctx.deps.food_search.run(prompt, deps=ctx.deps.repositories),
-            instruction,
+            task,
         )
         return result.output
 
     async def run_nutrition_analysis(
-        self, ctx: RunContext[OrchestratorDependencies], instruction: str
+        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
     ) -> NutritionAnalysisAnswer:
         """Delegate nutrient analysis to the nutrition agent."""
         result = await self._delegate(
@@ -144,12 +168,12 @@ class FoodMindOrchestrator:
             lambda prompt: ctx.deps.nutrition_analysis.run(
                 prompt, deps=ctx.deps.repositories
             ),
-            instruction,
+            task,
         )
         return result.output
 
     async def run_product_comparison(
-        self, ctx: RunContext[OrchestratorDependencies], instruction: str
+        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
     ) -> ProductComparisonAnswer:
         """Delegate product comparison to the comparison agent."""
         result = await self._delegate(
@@ -158,12 +182,12 @@ class FoodMindOrchestrator:
             lambda prompt: ctx.deps.product_comparison.run(
                 prompt, deps=ctx.deps.repositories
             ),
-            instruction,
+            task,
         )
         return result.output
 
     async def run_food_recommendation(
-        self, ctx: RunContext[OrchestratorDependencies], instruction: str
+        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
     ) -> FoodRecommendationAnswer:
         """Delegate constrained recommendations to the recommendation agent."""
         result = await self._delegate(
@@ -172,7 +196,7 @@ class FoodMindOrchestrator:
             lambda prompt: ctx.deps.food_recommendation.run(
                 prompt, deps=ctx.deps.repositories
             ),
-            instruction,
+            task,
         )
         return result.output
 
