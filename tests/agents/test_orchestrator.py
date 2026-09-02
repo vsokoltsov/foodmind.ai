@@ -4,6 +4,7 @@ import pytest
 
 from app.agents.food_search import FoodSearchDependencies
 from app.agents.orchestrator import OrchestratorDependencies
+from app.agents.execution_state import ExecutionState
 from app.agents.planner import DelegationTask, ExecutionPlan, AgentName, PlannedTask
 
 
@@ -64,3 +65,18 @@ def test_delegation_budget_limits_one_agent() -> None:
 
     with pytest.raises(ValueError, match="food_search"):
         dependencies.authorize("food_search")
+
+
+def test_execution_state_rejects_duplicate_steps_and_records_evidence() -> None:
+    """Execution state prevents duplicate work and preserves tool evidence."""
+    state = ExecutionState(original_query="Find apples")
+    state.select_agent("food_search")
+    state.start_step("food_search:Find apples")
+    state.complete_step("food_search:Find apples", {"id": "1", "label": "Apple"})
+
+    with pytest.raises(ValueError, match="already attempted"):
+        state.start_step("food_search:Find apples")
+
+    assert state.selected_agents == ["food_search"]
+    assert state.completed_steps == ["food_search:Find apples"]
+    assert state.retrieved_evidence["food_search:Find apples"][0]["id"] == "1"

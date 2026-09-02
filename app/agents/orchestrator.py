@@ -12,6 +12,7 @@ from app.agents.food_recommendation import (
     FoodRecommendationAgent,
     FoodRecommendationAnswer,
 )
+from app.agents.execution_state import ExecutionState
 from app.agents.food_search import (
     FoodSearchAgent,
     FoodSearchAnswer,
@@ -49,6 +50,7 @@ class OrchestratorDependencies:
     max_calls_per_agent: int = 2
     calls: dict[str, int] = field(default_factory=dict)
     original_prompt: str | None = None
+    execution_state: ExecutionState | None = None
 
     @classmethod
     def from_repositories(
@@ -67,8 +69,9 @@ class OrchestratorDependencies:
         """Reset call counters before starting a new user request."""
         self.calls.clear()
         self.original_prompt = None
+        self.execution_state = None
 
-    def authorize(self, agent_name: str) -> None:
+    def authorize(self, agent_name: str, step_key: str | None = None) -> None:
         """Enforce total and per-agent delegation limits."""
         total = sum(self.calls.values())
         current = self.calls.get(agent_name, 0)
@@ -76,6 +79,10 @@ class OrchestratorDependencies:
             raise ValueError("Orchestrator delegation budget exhausted")
         if current >= self.max_calls_per_agent:
             raise ValueError(f"Delegation limit reached for {agent_name}")
+        if self.execution_state is not None:
+            self.execution_state.select_agent(agent_name)
+            if step_key is not None:
+                self.execution_state.start_step(step_key)
         self.calls[agent_name] = current + 1
 
 
@@ -129,6 +136,7 @@ class FoodMindOrchestrator:
         """Run one orchestrated request with a fresh delegation budget."""
         deps.reset_budget()
         deps.original_prompt = prompt
+        deps.execution_state = ExecutionState(original_query=prompt, rewritten_query=prompt)
         return await self.agent.run(prompt, deps=deps, usage_limits=usage_limits)
 
     async def _delegate(
@@ -139,7 +147,13 @@ class FoodMindOrchestrator:
         task: DelegationTask,
     ) -> Any:
         """Authorize and execute one specialist-agent call."""
-        ctx.deps.authorize(name)
+        step_key = f"{name}:{task.objective}"
+        try:
+            ctx.deps.authorize(name, step_key)
+        except Exception as error:
+            if ctx.deps.execution_state is not None:
+                ctx.deps.execution_state.record_error(step_key, error)
+            raise
         prompt = task.objective
         if ctx.deps.original_prompt:
             prompt += f"\n\nOriginal user request:\n{ctx.deps.original_prompt}"
@@ -147,7 +161,15 @@ class FoodMindOrchestrator:
             prompt += f"\n\nRelevant context:\n{task.context}"
         if task.required_fields:
             prompt += "\n\nRequired fields: " + ", ".join(task.required_fields)
-        return await call(prompt)
+        try:
+            result = await call(prompt)
+        except Exception as error:
+            if ctx.deps.execution_state is not None:
+                ctx.deps.execution_state.record_error(step_key, error)
+            raise
+        if ctx.deps.execution_state is not None:
+            ctx.deps.execution_state.complete_step(step_key, result.output)
+        return result
 
     async def run_food_search(
         self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask

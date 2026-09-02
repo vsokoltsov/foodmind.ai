@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
 from app.agents.food_recommendation import FoodRecommendationAnswer
+from app.agents.execution_state import ExecutionState
 from app.agents.food_search import FoodSearchAnswer
 from app.agents.nutrition_analysis import NutritionAnalysisAnswer
 from app.agents.orchestrator import OrchestratorDependencies
@@ -35,6 +36,7 @@ class ExecutionReport(BaseModel):
     """Partial-tolerant result of executing a complete plan."""
 
     tasks: list[TaskExecution] = Field(default_factory=list)
+    execution_state: ExecutionState | None = None
 
     @property
     def successful(self) -> list[TaskExecution]:
@@ -69,6 +71,9 @@ class PlanExecutor:
         dependencies.max_total_calls = self.max_total_calls
         dependencies.max_calls_per_agent = self.max_calls_per_agent
         dependencies.original_prompt = prompt
+        dependencies.execution_state = ExecutionState(
+            original_query=prompt, rewritten_query=prompt
+        )
         by_id = {task.id: task for task in plan.tasks}
         completed: dict[str, TaskExecution] = {}
         pending = set(by_id)
@@ -86,6 +91,10 @@ class PlanExecutor:
                     agent=task.agent,
                     error="Blocked by a failed dependency",
                 )
+                if dependencies.execution_state is not None:
+                    dependencies.execution_state.record_error(
+                        task.id, ValueError("Blocked by a failed dependency")
+                    )
                 pending.remove(task.id)
             if not pending:
                 break
@@ -105,6 +114,10 @@ class PlanExecutor:
                         agent=by_id[task_id].agent,
                         error="Blocked by a failed or unresolved dependency",
                     )
+                    if dependencies.execution_state is not None:
+                        dependencies.execution_state.record_error(
+                            task_id, ValueError("Blocked by a failed or unresolved dependency")
+                        )
                 break
             results = await asyncio.gather(
                 *(self._execute_task(task, completed, dependencies) for task in ready),
@@ -114,7 +127,10 @@ class PlanExecutor:
                 completed[result.task_id] = result
                 pending.remove(result.task_id)
 
-        return ExecutionReport(tasks=[completed[task.id] for task in plan.tasks])
+        return ExecutionReport(
+            tasks=[completed[task.id] for task in plan.tasks],
+            execution_state=dependencies.execution_state,
+        )
 
     async def _execute_task(
         self,
@@ -127,18 +143,27 @@ class PlanExecutor:
         cache_key = (task.agent, task.task.objective + "\n" + context)
         cached = self._cache.get(cache_key)
         if cached is not None:
+            step_key = f"{task.id}:{task.agent.value}"
+            if dependencies.execution_state is not None:
+                dependencies.execution_state.select_agent(task.agent.value)
+                dependencies.execution_state.complete_step(step_key, cached)
             return TaskExecution(
                 task_id=task.id, agent=task.agent, output=cached, cached=True
             )
         try:
-            dependencies.authorize(task.agent.value)
+            step_key = f"{task.id}:{task.agent.value}"
+            dependencies.authorize(task.agent.value, step_key)
             result = await asyncio.wait_for(
                 self._call_agent(task.agent, self._prompt(task, context), dependencies),
                 timeout=self.task_timeout_seconds,
             )
             self._cache[cache_key] = result
+            if dependencies.execution_state is not None:
+                dependencies.execution_state.complete_step(step_key, result)
             return TaskExecution(task_id=task.id, agent=task.agent, output=result)
         except Exception as error:
+            if dependencies.execution_state is not None:
+                dependencies.execution_state.record_error(step_key, error)
             return TaskExecution(task_id=task.id, agent=task.agent, error=str(error))
 
     async def _call_agent(

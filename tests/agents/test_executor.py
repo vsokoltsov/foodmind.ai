@@ -65,3 +65,7 @@ def test_executor_passes_dependency_results_and_caches_identical_tasks() -> None
     assert cached_report.tasks[0].cached
     assert agent.calls == 2
     assert "Find foods" in report.tasks[1].output.answer  # type: ignore[union-attr]
+    assert report.execution_state is not None
+    assert report.execution_state.original_query == "User request"
+    assert len(report.execution_state.completed_steps) == 2
+    assert report.execution_state.selected_agents == ["food_search", "nutrition_analysis"]
