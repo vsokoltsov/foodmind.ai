@@ -1,0 +1,10 @@
+[
+  {
+    "question": "How much protein and fiber does the chocolate protein bar contain?",
+    "reference_answer": "The answer should identify the USDA branded chocolate protein bar and report both protein and fiber amounts with units."
+  },
+  {
+    "question": "Compare the protein and fiber in the USDA apple food.",
+    "reference_answer": "The answer should identify the USDA Foundation apple and report the requested nutrients with clear normalized units."
+  }
+]

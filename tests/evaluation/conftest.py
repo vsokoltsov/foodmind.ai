@@ -74,7 +74,10 @@ def evaluation_catalog() -> Iterator[str]:
                     "category": "Fruits",
                     "scientific_name": None,
                     "publication_date": "2026-01-01",
-                    "nutrients": [],
+                    "nutrients": [
+                        {"id": 1003, "number": "203", "name": "Protein", "unit": "g", "amount": 0.26},
+                        {"id": 1079, "number": "291", "name": "Fiber, total dietary", "unit": "g", "amount": 2.4},
+                    ],
                 },
             },
             {
@@ -96,7 +99,10 @@ def evaluation_catalog() -> Iterator[str]:
                     "publication_date": "2026-01-01",
                     "serving_size": 40.0,
                     "serving_size_unit": "g",
-                    "nutrients": [],
+                    "nutrients": [
+                        {"id": 1003, "number": "203", "name": "Protein", "unit": "g", "amount": 10.0},
+                        {"id": 1079, "number": "291", "name": "Fiber, total dietary", "unit": "g", "amount": 6.0},
+                    ],
                 },
             },
             {
