@@ -15,12 +15,11 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl --fail --silent http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s >/dev/null || exit 1",
+          "curl --fail --silent 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1",
         ]
-      interval: 10s
+      interval: 5s
       timeout: 10s
-      retries: 12
-      start_period: 30s
+      retries: 30
     restart: unless-stopped
 
   run-migrations:
@@ -32,15 +31,17 @@ services:
         KESTRA_VERSION: ${KESTRA_VERSION:-latest}
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      # Alembic uses this local database only to track migration revisions.
-      # Index creation itself is performed against Elasticsearch.
-      ALEMBIC_DATABASE_URL: sqlite:////var/lib/foodmind/alembic_version.db
+      # Alembic stores revision state and applies relational migrations in the
+      # application PostgreSQL database. Elasticsearch is handled by the first
+      # migration as an external service.
+      ALEMBIC_DATABASE_URL: postgresql+psycopg://${APP_POSTGRES_USER:-foodmind}:${APP_POSTGRES_PASSWORD:-foodmind}@app-postgres:5432/${APP_POSTGRES_DB:-foodmind}
     working_dir: /workspace
     volumes:
       - ./:/workspace:ro
-      - elasticsearch-migrations:/var/lib/foodmind
     depends_on:
       elasticsearch:
+        condition: service_healthy
+      app-postgres:
         condition: service_healthy
     entrypoint: ["/opt/foodmind/.venv/bin/alembic", "-c", "/workspace/alembic.ini", "upgrade", "head"]
     restart: "no"
@@ -180,7 +181,6 @@ services:
 
 volumes:
   elasticsearch-data:
-  elasticsearch-migrations:
   kestra-postgres-data:
   app-postgres-data:
   kestra-data:
