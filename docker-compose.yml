@@ -15,7 +15,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl --fail --silent 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1",
+          "curl --fail --silent http://$$(hostname -i | awk '{print $1}'):9200/_cluster/health?wait_for_status=yellow\\&timeout=5s >/dev/null || exit 1",
         ]
       interval: 5s
       timeout: 10s
