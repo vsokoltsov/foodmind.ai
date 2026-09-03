@@ -54,6 +54,8 @@ jobs:
         include:
           - agent: food-search
             target: evaluation-food-search
+          - agent: retrieval
+            target: evaluation-retrieval
           - agent: nutrition-analysis
             target: evaluation-nutrition-analysis
           - agent: product-comparison
