@@ -48,7 +48,9 @@ async def chat(payload: ChatRequest, request: Request) -> ChatResponse:
             content=payload.message,
         ))
         dependencies = OrchestratorDependencies.from_repositories(
-            FoodSearchDependencies.from_client(resources.elasticsearch)
+            FoodSearchDependencies.from_client(
+                resources.elasticsearch, resources.retrieval_approach
+            )
         )
         try:
             result = await resources.orchestrator.run(

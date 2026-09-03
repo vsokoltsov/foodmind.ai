@@ -99,9 +99,12 @@ class FoodSearchDependencies:
     wikidata: WikidataFoodRepository
     usda: USDARepository
     openfoodfacts: OpenFoodFactsRepository
+    retrieval_approach: str | None = None
 
     @classmethod
-    def from_client(cls, client: AsyncElasticsearch) -> "FoodSearchDependencies":
+    def from_client(
+        cls, client: AsyncElasticsearch, retrieval_approach: str | None = None
+    ) -> "FoodSearchDependencies":
         """Build repositories over one shared Elasticsearch client.
 
         Args:
@@ -114,6 +117,7 @@ class FoodSearchDependencies:
             wikidata=WikidataFoodRepository(client),
             usda=USDARepository(client),
             openfoodfacts=OpenFoodFactsRepository(client),
+            retrieval_approach=retrieval_approach,
         )
 
 

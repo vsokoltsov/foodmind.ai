@@ -43,7 +43,11 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
         orchestrator.run.return_value = SimpleNamespace(
             output=SimpleNamespace(answer="Here are the results", used_agents=["food_search"])
         )
-        resources = SimpleNamespace(elasticsearch=AsyncMock(), orchestrator=orchestrator)
+        resources = SimpleNamespace(
+            elasticsearch=AsyncMock(),
+            orchestrator=orchestrator,
+            retrieval_approach=None,
+        )
 
         class FakeConversationRepository:
             def __init__(self, _session):
