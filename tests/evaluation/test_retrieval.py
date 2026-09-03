@@ -50,4 +50,4 @@ def test_retrieval_evaluation(evaluation_catalog: str, tmp_path: Path) -> None:
         RetrievalApproach.BM25,
         RetrievalApproach.FILTERED_BM25,
     }
-    assert len(json.loads(output.read_text())) == 42
+    assert len(json.loads(output.read_text())["results"]) == 42

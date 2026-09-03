@@ -43,7 +43,7 @@ jobs:
       - run: make ${{ matrix.suite }}
 
   evaluation:
-    name: ${{ matrix.agent }} LLM evaluation
+    name: ${{ matrix.agent }} ${{ matrix.agent == 'retrieval' && 'retrieval' || 'LLM' }} evaluation
     needs: tests
     # Secret Manager access is intentionally unavailable to forked pull requests.
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
@@ -107,7 +107,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --dev
-      - name: Run ${{ matrix.agent }} LLM-as-judge evaluation
+      - name: Run ${{ matrix.agent }} evaluation
         env:
           ELASTICSEARCH_URL: http://localhost:9200
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
