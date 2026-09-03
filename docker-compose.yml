@@ -3,6 +3,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.4.3}
     environment:
       discovery.type: single-node
+      network.host: 0.0.0.0
       xpack.security.enabled: "false"
       xpack.security.enrollment.enabled: "false"
       ES_JAVA_OPTS: "-Xms1g -Xmx1g"
@@ -22,19 +23,26 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  elasticsearch-init:
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.4.3}
+  run-migrations:
+    image: foodmind-kestra:${KESTRA_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.kestra
+      args:
+        KESTRA_VERSION: ${KESTRA_VERSION:-latest}
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      ELASTICSEARCH_INDEX_VERSION: ${ELASTICSEARCH_INDEX_VERSION:-v1}
-      INDEX_DEFINITIONS_DIR: /indexes
+      # Alembic uses this local database only to track migration revisions.
+      # Index creation itself is performed against Elasticsearch.
+      ALEMBIC_DATABASE_URL: sqlite:////var/lib/foodmind/alembic_version.db
+    working_dir: /workspace
     volumes:
-      - ./elasticsearch/generated/${ELASTICSEARCH_INDEX_VERSION:-v1}:/indexes:ro
-      - ./infra/elasticsearch/init-indexes.sh:/opt/foodmind/init-indexes.sh:ro
+      - ./:/workspace:ro
+      - elasticsearch-migrations:/var/lib/foodmind
     depends_on:
       elasticsearch:
         condition: service_healthy
-    entrypoint: ["bash", "/opt/foodmind/init-indexes.sh"]
+    entrypoint: ["/opt/foodmind/.venv/bin/alembic", "-c", "/workspace/alembic.ini", "upgrade", "head"]
     restart: "no"
 
   kibana:
@@ -44,20 +52,35 @@ services:
     ports:
       - "5601:5601"
     depends_on:
-      elasticsearch-init:
+      run-migrations:
         condition: service_completed_successfully
     restart: unless-stopped
 
   kestra-postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: kestra
-      POSTGRES_USER: kestra
-      POSTGRES_PASSWORD: kestra
+      POSTGRES_DB: ${KESTRA_POSTGRES_DB:-kestra}
+      POSTGRES_USER: ${KESTRA_POSTGRES_USER:-kestra}
+      POSTGRES_PASSWORD: ${KESTRA_POSTGRES_PASSWORD:-kestra}
     volumes:
       - kestra-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kestra -d kestra"]
+      test: ["CMD-SHELL", "pg_isready -U ${KESTRA_POSTGRES_USER:-kestra} -d ${KESTRA_POSTGRES_DB:-kestra}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${APP_POSTGRES_DB:-foodmind}
+      POSTGRES_USER: ${APP_POSTGRES_USER:-foodmind}
+      POSTGRES_PASSWORD: ${APP_POSTGRES_PASSWORD:-foodmind}
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_POSTGRES_USER:-foodmind} -d ${APP_POSTGRES_DB:-foodmind}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -81,6 +104,7 @@ services:
     env_file: .env
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
+      DATABASE_URL: postgresql+psycopg://${APP_POSTGRES_USER:-foodmind}:${APP_POSTGRES_PASSWORD:-foodmind}@app-postgres:5432/${APP_POSTGRES_DB:-foodmind}
       INGESTION_ARTIFACT_STORAGE: ${INGESTION_ARTIFACT_STORAGE:-local}
       GCS_BUCKET: ${GCS_BUCKET:-}
       GCS_PREFIX: ${GCS_PREFIX:-foodmind/ingestion}
@@ -105,7 +129,9 @@ services:
     depends_on:
       kestra-postgres:
         condition: service_healthy
-      elasticsearch-init:
+      app-postgres:
+        condition: service_healthy
+      run-migrations:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:8081/health >/dev/null || exit 1"]
@@ -154,6 +180,8 @@ services:
 
 volumes:
   elasticsearch-data:
+  elasticsearch-migrations:
   kestra-postgres-data:
+  app-postgres-data:
   kestra-data:
   kestra-dlt-data:
