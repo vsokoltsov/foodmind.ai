@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test-unit test-integration evaluation evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor test
+.PHONY: lint typecheck test-unit test-integration evaluation evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor test
 
 lint:
 	uv run ruff check app tests
@@ -14,6 +14,9 @@ test-integration:
 
 evaluation-food-search:
 	uv run pytest -m evaluation tests/evaluation/test_food_search.py -q
+
+evaluation-retrieval:
+	uv run pytest -m evaluation tests/evaluation/test_retrieval.py -q
 
 evaluation-nutrition-analysis:
 	uv run pytest -m evaluation tests/evaluation/test_nutrition_analysis.py -q
@@ -33,7 +36,7 @@ evaluation-planner:
 evaluation-executor:
 	uv run pytest -m evaluation tests/evaluation/test_executor.py -q
 
-evaluation: evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor
+evaluation: evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor
 
 test:
 	$(MAKE) test-unit test-integration
