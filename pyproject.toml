@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.16.0",
     "dlt[duckdb]>=1.29.1",
     "elasticsearch[async]>=9.5.0",
+    "fastapi>=0.141.1",
     "google-cloud-storage>=2.18.0",
     "httpx>=0.27.0",
     "ijson>=3.5.1",
@@ -16,6 +17,7 @@ dependencies = [
     "pydantic-ai>=0.4.0",
     "pydantic-settings>=2.15.0",
     "tqdm>=4.67.1",
+    "uvicorn[standard]>=0.52.4",
 ]
 
 [tool.pytest.ini_options]
