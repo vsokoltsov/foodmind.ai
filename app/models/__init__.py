@@ -1,0 +1,1 @@
+"""Application persistence model package."""
