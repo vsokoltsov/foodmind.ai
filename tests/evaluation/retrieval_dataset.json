@@ -1,0 +1,114 @@
+[
+  {
+    "index": "usda-foundation-foods",
+    "query": "apple",
+    "relevant_ids": ["usda-fdc:1001"],
+    "filters": {"category": "Fruits"}
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "chocolate protein bar",
+    "relevant_ids": ["usda-fdc:2001"],
+    "filters": {"category": "Snack bars"}
+  },
+  {
+    "index": "wikidata-food-entities",
+    "query": "Italian pasta",
+    "relevant_ids": ["wikidata:Q161807"]
+  },
+  {
+    "index": "usda-foundation-foods",
+    "query": "raw apple with skin",
+    "relevant_ids": ["usda-fdc:1001"],
+    "filters": {"category": "Fruits"}
+  },
+  {
+    "index": "usda-foundation-foods",
+    "query": "apple fruit",
+    "relevant_ids": ["usda-fdc:1001"]
+  },
+  {
+    "index": "usda-foundation-foods",
+    "query": "food containing fiber",
+    "relevant_ids": ["usda-fdc:1001"]
+  },
+  {
+    "index": "usda-foundation-foods",
+    "query": "protein and fiber apple",
+    "relevant_ids": ["usda-fdc:1001"]
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "chocolate snack bar",
+    "relevant_ids": ["usda-fdc:2001"],
+    "filters": {"category": "Snack bars"}
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "cocoa oats bar",
+    "relevant_ids": ["usda-fdc:2001"]
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "Example protein product",
+    "relevant_ids": ["usda-fdc:2001"],
+    "filters": {"brand_name": "Example"}
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "high protein snack",
+    "relevant_ids": ["usda-fdc:2001"]
+  },
+  {
+    "index": "usda-branded-foods",
+    "query": "chocolate protein bar United States",
+    "relevant_ids": ["usda-fdc:2001"]
+  },
+  {
+    "index": "openfoodfacts-products",
+    "query": "apple juice drink",
+    "relevant_ids": ["openfoodfacts:000000000002"],
+    "filters": {"countries": "United States"}
+  },
+  {
+    "index": "openfoodfacts-products",
+    "query": "apple beverage",
+    "relevant_ids": ["openfoodfacts:000000000002"]
+  },
+  {
+    "index": "openfoodfacts-products",
+    "query": "example drinks",
+    "relevant_ids": ["openfoodfacts:000000000002"],
+    "filters": {"brands": "Example Drinks"}
+  },
+  {
+    "index": "openfoodfacts-products",
+    "query": "beverages",
+    "relevant_ids": ["openfoodfacts:000000000002"]
+  },
+  {
+    "index": "openfoodfacts-products",
+    "query": "product containing apple",
+    "relevant_ids": ["openfoodfacts:000000000002"]
+  },
+  {
+    "index": "wikidata-food-entities",
+    "query": "pasta",
+    "relevant_ids": ["wikidata:Q161807"]
+  },
+  {
+    "index": "wikidata-food-entities",
+    "query": "traditional Italian food",
+    "relevant_ids": ["wikidata:Q161807"]
+  },
+  {
+    "index": "wikidata-food-entities",
+    "query": "Italian cuisine concept",
+    "relevant_ids": ["wikidata:Q161807"]
+  },
+  {
+    "index": "wikidata-food-entities",
+    "query": "food alias pasta",
+    "relevant_ids": ["wikidata:Q161807"]
+  }
+]
