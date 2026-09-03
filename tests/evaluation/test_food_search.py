@@ -15,6 +15,7 @@ from app.evaluation.food_search import (
 )
 from app.agents.food_search import FoodSearchDependencies
 from app.evaluation.food_search import FoodSearchEvaluationRunner, load_dataset
+from app.evaluation.artifacts import EvaluationArtifactRepository
 from app.settings import get_settings
 
 
@@ -42,6 +43,7 @@ def test_summary_selects_highest_approach_rate() -> None:
     ]
 
     summary = summarize_results(results)
+    asyncio.run(EvaluationArtifactRepository().save("food-search", summary, str(summary[0]["approach"])))
 
     assert summary[0]["approach"] == "direct"
     assert summary[0]["good_rate"] == 1.0

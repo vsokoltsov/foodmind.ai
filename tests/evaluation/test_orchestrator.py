@@ -14,6 +14,7 @@ from app.evaluation.orchestrator import (
     summarize_results,
 )
 from app.settings import get_settings
+from app.evaluation.artifacts import EvaluationArtifactRepository
 
 
 @pytest.mark.evaluation
@@ -40,5 +41,6 @@ def test_orchestrator_llm_evaluation(evaluation_catalog: str) -> None:
 
     results = asyncio.run(evaluate())
     summary = summarize_results(results)  # type: ignore[arg-type]
+    asyncio.run(EvaluationArtifactRepository().save("orchestrator", summary, str(summary[0]["approach"])))
     assert len(summary) == 2
     assert all(row["total"] == 2 for row in summary)

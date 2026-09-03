@@ -12,6 +12,7 @@ from app.evaluation.retrieval import (
     RetrievalEvaluationRunner,
     load_dataset,
 )
+from app.evaluation.artifacts import EvaluationArtifactRepository
 
 
 def test_retrieval_dataset_is_validated() -> None:
@@ -39,6 +40,11 @@ def test_retrieval_evaluation(evaluation_catalog: str, tmp_path: Path) -> None:
     report = asyncio.run(evaluate())
     output = tmp_path / "retrieval-results.json"
     report.save(output)
+    asyncio.run(
+        EvaluationArtifactRepository().save(
+            "retrieval", report.summary, report.best_approach.value
+        )
+    )
     assert output.exists()
     assert report.best_approach in {
         RetrievalApproach.BM25,
