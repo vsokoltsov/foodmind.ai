@@ -7,7 +7,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.chat import Conversation, Message, TurnExecution
+from app.aggregates import Conversation as ConversationAggregate
+from app.aggregates import Message as MessageAggregate
+from app.aggregates import TurnExecution as TurnExecutionAggregate
+from app.models.chat import (
+    Conversation as ConversationModel,
+    Message as MessageModel,
+    TurnExecution as TurnExecutionModel,
+)
 
 
 class ConversationRepository:
@@ -17,28 +24,31 @@ class ConversationRepository:
         """Initialize the repository with an async database session."""
         self.session = session
 
-    async def create(
-        self, *, user_id: UUID | None = None, title: str | None = None
-    ) -> Conversation:
+    async def create(self, entity: ConversationAggregate) -> ConversationModel:
         """Create and flush a conversation."""
-        conversation = Conversation(user_id=user_id, title=title)
+        conversation = ConversationModel(
+            id=entity.id,
+            user_id=entity.user_id,
+            title=entity.title,
+            summary=entity.summary,
+        )
         self.session.add(conversation)
         await self.session.flush()
         return conversation
 
-    async def get(self, conversation_id: UUID) -> Conversation | None:
+    async def get(self, conversation_id: UUID) -> ConversationModel | None:
         """Return a conversation by identifier."""
-        return await self.session.get(Conversation, conversation_id)
+        return await self.session.get(ConversationModel, conversation_id)
 
-    async def list(self, *, user_id: UUID | None = None) -> Sequence[Conversation]:
+    async def list(self, *, user_id: UUID | None = None) -> Sequence[ConversationModel]:
         """Return conversations, optionally restricted to a user."""
-        statement = select(Conversation).order_by(Conversation.updated_at.desc())
+        statement = select(ConversationModel).order_by(ConversationModel.updated_at.desc())
         if user_id is not None:
-            statement = statement.where(Conversation.user_id == user_id)
+            statement = statement.where(ConversationModel.user_id == user_id)
         result = await self.session.scalars(statement)
         return result.all()
 
-    async def update(self, conversation: Conversation, **values: Any) -> Conversation:
+    async def update(self, conversation: ConversationModel, **values: Any) -> ConversationModel:
         """Update allowed conversation attributes and flush the change."""
         for name in ("user_id", "title", "summary"):
             if name in values:
@@ -46,7 +56,7 @@ class ConversationRepository:
         await self.session.flush()
         return conversation
 
-    async def delete(self, conversation: Conversation) -> None:
+    async def delete(self, conversation: ConversationModel) -> None:
         """Delete a conversation and flush the change."""
         await self.session.delete(conversation)
         await self.session.flush()
@@ -59,41 +69,34 @@ class MessageRepository:
         """Initialize the repository with an async database session."""
         self.session = session
 
-    async def create(
-        self,
-        *,
-        conversation_id: UUID,
-        role: str,
-        content: str,
-        agent_name: str | None = None,
-        message_metadata: dict[str, Any] | None = None,
-    ) -> Message:
+    async def create(self, entity: MessageAggregate) -> MessageModel:
         """Create and flush a message."""
-        message = Message(
-            conversation_id=conversation_id,
-            role=role,
-            content=content,
-            agent_name=agent_name,
-            message_metadata=message_metadata or {},
+        message = MessageModel(
+            id=entity.id,
+            conversation_id=entity.conversation_id,
+            role=entity.role,
+            content=entity.content,
+            agent_name=entity.agent_name,
+            message_metadata=entity.message_metadata,
         )
         self.session.add(message)
         await self.session.flush()
         return message
 
-    async def get(self, message_id: UUID) -> Message | None:
+    async def get(self, message_id: UUID) -> MessageModel | None:
         """Return a message by identifier."""
-        return await self.session.get(Message, message_id)
+        return await self.session.get(MessageModel, message_id)
 
-    async def list_by_conversation(self, conversation_id: UUID) -> Sequence[Message]:
+    async def list_by_conversation(self, conversation_id: UUID) -> Sequence[MessageModel]:
         """Return messages in chronological order for a conversation."""
         result = await self.session.scalars(
-            select(Message)
-            .where(Message.conversation_id == conversation_id)
-            .order_by(Message.created_at.asc())
+            select(MessageModel)
+            .where(MessageModel.conversation_id == conversation_id)
+            .order_by(MessageModel.created_at.asc())
         )
         return result.all()
 
-    async def delete(self, message: Message) -> None:
+    async def delete(self, message: MessageModel) -> None:
         """Delete a message and flush the change."""
         await self.session.delete(message)
         await self.session.flush()
@@ -106,27 +109,46 @@ class TurnExecutionRepository:
         """Initialize the repository with an async database session."""
         self.session = session
 
-    async def create(self, **values: Any) -> TurnExecution:
+    async def create(self, entity: TurnExecutionAggregate) -> TurnExecutionModel:
         """Create and flush a turn execution."""
-        execution = TurnExecution(**values)
+        execution = TurnExecutionModel(
+            id=entity.id,
+            conversation_id=entity.conversation_id,
+            user_message_id=entity.user_message_id,
+            status=entity.status,
+            original_query=entity.original_query,
+            rewritten_query=entity.rewritten_query,
+            selected_agents=entity.selected_agents,
+            retrieved_evidence=entity.retrieved_evidence,
+            completed_steps=entity.completed_steps,
+            errors=entity.errors,
+            retry_counts=entity.retry_counts,
+            clarification_question=entity.clarification_question,
+            missing_fields=entity.missing_fields,
+            completed_at=entity.completed_at,
+        )
         self.session.add(execution)
         await self.session.flush()
         return execution
 
-    async def get(self, execution_id: UUID) -> TurnExecution | None:
+    async def get(self, execution_id: UUID) -> TurnExecutionModel | None:
         """Return an execution by identifier."""
-        return await self.session.get(TurnExecution, execution_id)
+        return await self.session.get(TurnExecutionModel, execution_id)
 
-    async def get_for_message(self, user_message_id: UUID) -> TurnExecution | None:
+    async def get_for_message(
+        self, user_message_id: UUID
+    ) -> TurnExecutionModel | None:
         """Return the execution associated with a user message."""
         result = await self.session.scalars(
-            select(TurnExecution).where(
-                TurnExecution.user_message_id == user_message_id
+            select(TurnExecutionModel).where(
+                TurnExecutionModel.user_message_id == user_message_id
             )
         )
         return result.one_or_none()
 
-    async def update(self, execution: TurnExecution, **values: Any) -> TurnExecution:
+    async def update(
+        self, execution: TurnExecutionModel, **values: Any
+    ) -> TurnExecutionModel:
         """Update execution state fields and flush the change."""
         for name in (
             "status",
@@ -145,7 +167,7 @@ class TurnExecutionRepository:
         await self.session.flush()
         return execution
 
-    async def delete(self, execution: TurnExecution) -> None:
+    async def delete(self, execution: TurnExecutionModel) -> None:
         """Delete an execution and flush the change."""
         await self.session.delete(execution)
         await self.session.flush()

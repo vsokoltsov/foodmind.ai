@@ -3,6 +3,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from app.models.chat import Conversation, Message, TurnExecution
+from app.aggregates import Conversation as ConversationAggregate
+from app.aggregates import Message as MessageAggregate
+from app.aggregates import TurnExecution as TurnExecutionAggregate
 from app.repositories.chat import (
     ConversationRepository,
     MessageRepository,
@@ -21,7 +24,7 @@ def test_conversation_repository_crud() -> None:
         session.get.return_value = conversation
         repository = ConversationRepository(session)
 
-        created = await repository.create(title="Lunch")
+        created = await repository.create(ConversationAggregate(title="Lunch"))
         fetched = await repository.get(conversation.id)
         await repository.update(created, title="Dinner", ignored="value")
         await repository.delete(created)
@@ -46,11 +49,11 @@ def test_message_repository_create_and_list() -> None:
         session.scalars.return_value = SimpleNamespace(all=lambda: [message])
         repository = MessageRepository(session)
 
-        created = await repository.create(
+        created = await repository.create(MessageAggregate(
             conversation_id=message.conversation_id,
             role="user",
             content="Hi",
-        )
+        ))
         fetched = await repository.get(message.id)
         listed = await repository.list_by_conversation(message.conversation_id)
         await repository.delete(created)
@@ -79,11 +82,11 @@ def test_turn_execution_repository_actions() -> None:
         session.scalars.return_value = SimpleNamespace(one_or_none=lambda: execution)
         repository = TurnExecutionRepository(session)
 
-        created = await repository.create(
+        created = await repository.create(TurnExecutionAggregate(
             conversation_id=execution.conversation_id,
             user_message_id=execution.user_message_id,
             original_query=execution.original_query,
-        )
+        ))
         assert await repository.get(execution.id) is execution
         assert await repository.get_for_message(execution.user_message_id) is execution
         await repository.update(created, status="completed", errors=["none"])
