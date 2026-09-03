@@ -1,6 +1,6 @@
 """Elasticsearch persistence for USDA FoodData Central food records."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
@@ -14,6 +14,7 @@ from app.clients.usda_fdc.models import (
     FoundationFood as ClientFoundationFood,
 )
 from app.repositories.models import BrandedDocument, FoundationDocument
+from app.repositories.hybrid import HybridRetriever
 from app.repositories.queries import BrandedFoodQuery, USDAFoodQuery
 
 
@@ -24,6 +25,7 @@ class USDARepository:
     client: AsyncElasticsearch
     foundation_index_name: str = "usda-foundation-foods"
     branded_index_name: str = "usda-branded-foods"
+    hybrid_retriever: HybridRetriever = field(default_factory=HybridRetriever)
 
     async def save_foundations(self, foods: list[FoundationFoodAggregate]) -> None:
         """Insert or replace a batch of canonical Foundation Foods."""
@@ -101,5 +103,9 @@ class USDARepository:
         body: dict[str, object] = {"bool": {"filter": filters}}
         if query.text:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "category"]}}]  # type: ignore[index]
-        response = await self.client.search(index=index, query=body, from_=query.offset, size=query.limit)
+        retriever = self.hybrid_retriever.build(body, query)
+        if retriever is not None:
+            response = await self.client.search(index=index, retriever=retriever, from_=query.offset, size=query.limit)
+        else:
+            response = await self.client.search(index=index, query=body, from_=query.offset, size=query.limit)
         return [model.model_validate(hit["_source"]) for hit in response["hits"]["hits"]]

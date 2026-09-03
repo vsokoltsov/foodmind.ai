@@ -9,6 +9,11 @@ class SearchQuery(BaseModel):
     text: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+    embedding: list[float] | None = Field(
+        default=None,
+        description="Optional query embedding; enables Elasticsearch hybrid retrieval.",
+    )
+    vector_candidates: int = Field(default=100, ge=1, le=1000)
 
 
 class WikidataFoodQuery(SearchQuery):

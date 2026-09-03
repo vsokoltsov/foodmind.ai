@@ -1,6 +1,6 @@
 """Elasticsearch persistence for Open Food Facts products."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.helpers import async_bulk
@@ -8,6 +8,7 @@ from elasticsearch.helpers import async_bulk
 from app.aggregates import OpenFoodFactsProduct as OpenFoodFactsAggregate
 from app.clients.openfoodfacts.models import OpenFoodFactsProduct as ClientProduct
 from app.repositories.models import OpenFoodFactsDocument
+from app.repositories.hybrid import HybridRetriever
 from app.repositories.queries import OpenFoodFactsQuery
 
 
@@ -17,6 +18,7 @@ class OpenFoodFactsRepository:
 
     client: AsyncElasticsearch
     index_name: str = "openfoodfacts-products"
+    hybrid_retriever: HybridRetriever = field(default_factory=HybridRetriever)
 
     async def save_records(self, products: list[OpenFoodFactsAggregate]) -> None:
         """Insert or replace a batch of canonical Open Food Facts products."""
@@ -64,5 +66,9 @@ class OpenFoodFactsRepository:
         body: dict[str, object] = {"bool": {"filter": filters}}
         if query.text:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "ingredients", "categories"]}}]  # type: ignore[index]
-        response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=query.limit)
+        retriever = self.hybrid_retriever.build(body, query)
+        if retriever is not None:
+            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=query.limit)
+        else:
+            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=query.limit)
         return [OpenFoodFactsAggregate.model_validate(hit["_source"]) for hit in response["hits"]["hits"]]
