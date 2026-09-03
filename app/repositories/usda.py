@@ -15,6 +15,7 @@ from app.clients.usda_fdc.models import (
 )
 from app.repositories.models import BrandedDocument, FoundationDocument
 from app.repositories.hybrid import HybridRetriever
+from app.repositories.reranking import DocumentReranker
 from app.repositories.queries import BrandedFoodQuery, USDAFoodQuery
 
 
@@ -26,6 +27,7 @@ class USDARepository:
     foundation_index_name: str = "usda-foundation-foods"
     branded_index_name: str = "usda-branded-foods"
     hybrid_retriever: HybridRetriever = field(default_factory=HybridRetriever)
+    reranker: DocumentReranker = field(default_factory=DocumentReranker)
 
     async def save_foundations(self, foods: list[FoundationFoodAggregate]) -> None:
         """Insert or replace a batch of canonical Foundation Foods."""
@@ -105,7 +107,12 @@ class USDARepository:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "category"]}}]  # type: ignore[index]
         retriever = self.hybrid_retriever.build(body, query)
         if retriever is not None:
-            response = await self.client.search(index=index, retriever=retriever, from_=query.offset, size=query.limit)
+            response = await self.client.search(index=index, retriever=retriever, from_=query.offset, size=self.reranker.candidate_size(query.limit))
         else:
-            response = await self.client.search(index=index, query=body, from_=query.offset, size=query.limit)
-        return [model.model_validate(hit["_source"]) for hit in response["hits"]["hits"]]
+            response = await self.client.search(index=index, query=body, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+        hits = response["hits"]["hits"]
+        if query.rerank:
+            hits = self.reranker.rerank(hits, query.text, query.limit)
+        else:
+            hits = hits[: query.limit]
+        return [model.model_validate(hit["_source"]) for hit in hits]

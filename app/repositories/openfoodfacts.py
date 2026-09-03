@@ -9,6 +9,7 @@ from app.aggregates import OpenFoodFactsProduct as OpenFoodFactsAggregate
 from app.clients.openfoodfacts.models import OpenFoodFactsProduct as ClientProduct
 from app.repositories.models import OpenFoodFactsDocument
 from app.repositories.hybrid import HybridRetriever
+from app.repositories.reranking import DocumentReranker
 from app.repositories.queries import OpenFoodFactsQuery
 
 
@@ -19,6 +20,7 @@ class OpenFoodFactsRepository:
     client: AsyncElasticsearch
     index_name: str = "openfoodfacts-products"
     hybrid_retriever: HybridRetriever = field(default_factory=HybridRetriever)
+    reranker: DocumentReranker = field(default_factory=DocumentReranker)
 
     async def save_records(self, products: list[OpenFoodFactsAggregate]) -> None:
         """Insert or replace a batch of canonical Open Food Facts products."""
@@ -68,7 +70,12 @@ class OpenFoodFactsRepository:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "ingredients", "categories"]}}]  # type: ignore[index]
         retriever = self.hybrid_retriever.build(body, query)
         if retriever is not None:
-            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=query.limit)
+            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=self.reranker.candidate_size(query.limit))
         else:
-            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=query.limit)
-        return [OpenFoodFactsAggregate.model_validate(hit["_source"]) for hit in response["hits"]["hits"]]
+            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+        hits = response["hits"]["hits"]
+        if query.rerank:
+            hits = self.reranker.rerank(hits, query.text, query.limit)
+        else:
+            hits = hits[: query.limit]
+        return [OpenFoodFactsAggregate.model_validate(hit["_source"]) for hit in hits]

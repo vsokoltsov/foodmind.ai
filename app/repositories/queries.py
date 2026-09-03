@@ -14,6 +14,7 @@ class SearchQuery(BaseModel):
         description="Optional query embedding; enables Elasticsearch hybrid retrieval.",
     )
     vector_candidates: int = Field(default=100, ge=1, le=1000)
+    rerank: bool = True
 
 
 class WikidataFoodQuery(SearchQuery):

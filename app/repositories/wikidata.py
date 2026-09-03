@@ -9,6 +9,7 @@ from elasticsearch.helpers import async_bulk
 from app.aggregates import FoodEntity
 from app.repositories.queries import WikidataFoodQuery
 from app.repositories.hybrid import HybridRetriever
+from app.repositories.reranking import DocumentReranker
 
 
 @dataclass
@@ -18,6 +19,7 @@ class WikidataFoodRepository:
     client: AsyncElasticsearch
     index_name: str = "wikidata-food-entities"
     hybrid_retriever: HybridRetriever = field(default_factory=HybridRetriever)
+    reranker: DocumentReranker = field(default_factory=DocumentReranker)
 
     async def save_records(self, documents: list[FoodEntity]) -> None:
         """Insert or replace a batch of normalized Wikidata food records."""
@@ -68,10 +70,15 @@ class WikidataFoodRepository:
             body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "aliases"]}}]  # type: ignore[index]
         retriever = self.hybrid_retriever.build(body, query)
         if retriever is not None:
-            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=query.limit)
+            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=self.reranker.candidate_size(query.limit))
         else:
-            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=query.limit)
-        return [self._from_hit(hit) for hit in response["hits"]["hits"]]
+            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+        hits = response["hits"]["hits"]
+        if query.rerank:
+            hits = self.reranker.rerank(hits, query.text, query.limit)
+        else:
+            hits = hits[: query.limit]
+        return [self._from_hit(hit) for hit in hits]
 
     @staticmethod
     def _from_hit(hit: dict[str, object]) -> FoodEntity:

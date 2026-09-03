@@ -32,7 +32,11 @@ def test_retrieval_evaluation(evaluation_catalog: str, tmp_path: Path) -> None:
             runner = RetrievalEvaluationRunner(client)
             return await runner.run(
                 load_dataset(Path(__file__).parent / "retrieval_dataset.json"),
-                [RetrievalApproach.BM25, RetrievalApproach.FILTERED_BM25],
+                [
+                    RetrievalApproach.BM25,
+                    RetrievalApproach.FILTERED_BM25,
+                    RetrievalApproach.HYBRID_RERANKED,
+                ],
             )
         finally:
             await client.close()
@@ -50,4 +54,4 @@ def test_retrieval_evaluation(evaluation_catalog: str, tmp_path: Path) -> None:
         RetrievalApproach.BM25,
         RetrievalApproach.FILTERED_BM25,
     }
-    assert len(json.loads(output.read_text())["results"]) == 42
+    assert len(json.loads(output.read_text())["results"]) == 63

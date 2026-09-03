@@ -9,6 +9,8 @@ from typing import Any
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, Field
 
+from app.repositories.reranking import DocumentReranker
+
 
 class RetrievalApproach(StrEnum):
     """Retrieval strategies compared by the benchmark."""
@@ -16,6 +18,7 @@ class RetrievalApproach(StrEnum):
     BM25 = "bm25"
     FILTERED_BM25 = "filtered_bm25"
     HYBRID = "hybrid"
+    HYBRID_RERANKED = "hybrid_reranked"
 
 
 class RetrievalEvaluationItem(BaseModel):
@@ -59,6 +62,7 @@ class RetrievalEvaluationRunner:
 
     client: AsyncElasticsearch
     k: int = 10
+    reranker: DocumentReranker = DocumentReranker()
 
     async def run(
         self,
@@ -98,8 +102,14 @@ class RetrievalEvaluationRunner:
                     "filter": filters,
                 }
             }
-            kwargs: dict[str, Any] = {"index": item.index, "size": self.k}
-            if approach is RetrievalApproach.HYBRID and item.embedding is not None:
+            kwargs: dict[str, Any] = {
+                "index": item.index,
+                "size": self.reranker.candidate_size(self.k),
+            }
+            if approach in {
+                RetrievalApproach.HYBRID,
+                RetrievalApproach.HYBRID_RERANKED,
+            } and item.embedding is not None:
                 kwargs["retriever"] = {
                     "rrf": {
                         "retrievers": [
@@ -112,7 +122,12 @@ class RetrievalEvaluationRunner:
             else:
                 kwargs["query"] = body
             response = await self.client.search(**kwargs)
-            retrieved = [str(hit["_id"]) for hit in response["hits"]["hits"]]
+            hits = response["hits"]["hits"]
+            if approach is RetrievalApproach.HYBRID_RERANKED:
+                hits = self.reranker.rerank(hits, item.query, self.k)
+            else:
+                hits = hits[: self.k]
+            retrieved = [str(hit["_id"]) for hit in hits]
             relevant = set(item.relevant_ids)
             rank = next((position for position, doc_id in enumerate(retrieved, 1) if doc_id in relevant), 0)
             return RetrievalEvaluationResult(
