@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
 
     ELASTICSEARCH_URL: str = "http://localhost:9200"
+    DATABASE_URL: str = "postgresql+psycopg://foodmind:foodmind@localhost:5432/foodmind"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "openai:gpt-5-mini"
     INGESTION_ARTIFACT_STORAGE: Literal["local", "gcs"] = "local"
