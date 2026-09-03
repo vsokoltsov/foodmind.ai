@@ -14,6 +14,8 @@ local commonProperties = {
   entity_type: { type: 'keyword' },
   label: textKeyword(),
   description: { type: 'text' },
+  // Optional semantic vector used by hybrid BM25 + kNN retrieval.
+  embedding: { type: 'dense_vector', dims: 1536, similarity: 'cosine' },
 };
 
 local relatedEntities = {

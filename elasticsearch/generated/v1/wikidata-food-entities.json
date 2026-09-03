@@ -48,6 +48,11 @@
          "description": {
             "type": "text"
          },
+         "embedding": {
+            "dims": 1536,
+            "similarity": "cosine",
+            "type": "dense_vector"
+         },
          "entity_type": {
             "type": "keyword"
          },
