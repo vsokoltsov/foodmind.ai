@@ -19,6 +19,13 @@ module "evaluation_artifacts" {
   force_destroy         = var.force_destroy
 }
 
+resource "google_storage_bucket_iam_member" "github_evaluation_writer" {
+  count  = var.evaluation_bucket_name == null ? 0 : 1
+  bucket = module.evaluation_artifacts[0].bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_project_service" "secret_manager" {
   project = var.project_id
   service = "secretmanager.googleapis.com"
@@ -85,12 +92,13 @@ module "gcp_secrets" {
 }
 
 module "github_actions_config" {
-  source = "./modules/github-actions-secrets"
+  source = "./modules/github-actions-config"
 
   repository                 = var.github_repository
   gcp_project_id             = var.project_id
   workload_identity_provider = google_iam_workload_identity_pool_provider.github_actions.name
   gcp_service_account_email  = google_service_account.github_actions.email
+  evaluation_bucket_name     = coalesce(var.evaluation_bucket_name, "${var.bucket_name}-evaluation")
 }
 
 resource "google_service_account" "ingestion" {

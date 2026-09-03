@@ -15,3 +15,9 @@ resource "github_actions_variable" "service_account" {
   variable_name = "GCP_SERVICE_ACCOUNT"
   value         = var.gcp_service_account_email
 }
+
+resource "github_actions_variable" "evaluation_bucket" {
+  repository    = var.repository
+  variable_name = "EVALUATION_ARTIFACT_BUCKET"
+  value         = var.evaluation_bucket_name
+}

@@ -1,5 +1,5 @@
 variable "repository" {
-  description = "GitHub repository name that receives Actions configuration variables."
+  description = "GitHub repository receiving Actions configuration variables."
   type        = string
 }
 
@@ -15,5 +15,10 @@ variable "workload_identity_provider" {
 
 variable "gcp_service_account_email" {
   description = "GitHub Actions service account email exposed as an Actions variable."
+  type        = string
+}
+
+variable "evaluation_bucket_name" {
+  description = "Evaluation artifact bucket exposed as a non-sensitive Actions variable."
   type        = string
 }
