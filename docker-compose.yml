@@ -15,7 +15,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl --fail --silent http://$$(hostname -i | awk '{print $1}'):9200/_cluster/health?wait_for_status=yellow\\&timeout=5s >/dev/null || exit 1",
+          "curl --fail --silent 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null || exit 1",
         ]
       interval: 5s
       timeout: 10s
@@ -105,7 +105,7 @@ services:
     env_file: .env
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      DATABASE_URL: postgresql+psycopg://${APP_POSTGRES_USER:-foodmind}:${APP_POSTGRES_PASSWORD:-foodmind}@app-postgres:5432/${APP_POSTGRES_DB:-foodmind}
+      DATABASE_URL: ${KESTRA_DATABASE_URL}
       INGESTION_ARTIFACT_STORAGE: ${INGESTION_ARTIFACT_STORAGE:-local}
       GCS_BUCKET: ${GCS_BUCKET:-}
       GCS_PREFIX: ${GCS_PREFIX:-foodmind/ingestion}
@@ -140,6 +140,24 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    restart: unless-stopped
+
+  api:
+    image: foodmind-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      DATABASE_URL: ${API_DATABASE_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   kestra-ui:
