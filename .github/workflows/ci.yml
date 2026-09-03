@@ -110,4 +110,6 @@ jobs:
       - name: Run ${{ matrix.agent }} LLM-as-judge evaluation
         env:
           ELASTICSEARCH_URL: http://localhost:9200
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
         run: make ${{ matrix.target }}
