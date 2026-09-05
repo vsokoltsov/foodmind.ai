@@ -23,12 +23,10 @@ services:
     restart: unless-stopped
 
   run-migrations:
-    image: foodmind-kestra:${KESTRA_VERSION:-latest}
+    image: foodmind-api:latest
     build:
       context: .
-      dockerfile: Dockerfile.kestra
-      args:
-        KESTRA_VERSION: ${KESTRA_VERSION:-latest}
+      dockerfile: Dockerfile.api
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       # Alembic stores revision state and applies relational migrations in the
@@ -43,7 +41,7 @@ services:
         condition: service_healthy
       app-postgres:
         condition: service_healthy
-    entrypoint: ["/opt/foodmind/.venv/bin/alembic", "-c", "/workspace/alembic.ini", "upgrade", "head"]
+    entrypoint: ["/app/.venv/bin/alembic", "-c", "/workspace/alembic.ini", "upgrade", "head"]
     restart: "no"
 
   kibana:
@@ -170,6 +168,35 @@ services:
         condition: service_healthy
       run-migrations:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  ui:
+    image: foodmind-ui:latest
+    working_dir: /app
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    environment:
+      FOODMIND_API_URL: http://api:8000
+      PYTHONPATH: /app
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      STREAMLIT_SERVER_PORT: 7860
+    command: ["streamlit", "run", "app/ui/streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "7860"]
+    volumes:
+      - ./app/ui:/app/app/ui:ro
+      - ./.chainlit:/app/.chainlit:ro
+    ports:
+      - "7860:7860"
+    depends_on:
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
   kestra-ui:
