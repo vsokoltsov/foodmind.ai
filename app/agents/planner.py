@@ -84,10 +84,10 @@ class FoodMindPlanner:
     def __post_init__(self) -> None:
         """Create the structured-output planning agent."""
         settings = get_settings()
-        model = settings.OPENAI_MODEL
+        model = settings.OPENAI_PLANNER_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
             model = OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                model_name=model.removeprefix("openai:"),
                 provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
         self.agent = Agent(

@@ -1,10 +1,10 @@
 """HTTP endpoints for conversational FoodMind requests."""
 
-from uuid import UUID
-
-import json
 import asyncio
+import json
+import logging
 from collections.abc import Awaitable, Callable
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
@@ -28,6 +28,7 @@ from app.api.models import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _sse(event: str, data: object) -> str:
@@ -149,6 +150,7 @@ async def _process_message(
         if event_callback is not None:
             await event_callback("orchestrator_completed", {})
     except Exception as error:
+        logger.exception("FoodMind orchestrator failed for chat %s", chat_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to process the request",
@@ -180,6 +182,8 @@ async def _process_message(
                          if dependencies.execution_state else []),
         errors=(dependencies.execution_state.errors
                 if dependencies.execution_state else []),
+        durations_ms=(dependencies.execution_state.durations_ms
+                      if dependencies.execution_state else {}),
     )
 
 

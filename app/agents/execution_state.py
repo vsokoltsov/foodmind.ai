@@ -14,6 +14,7 @@ class ExecutionState(BaseModel):
     errors: list[str] = Field(default_factory=list)
     retry_counts: dict[str, int] = Field(default_factory=dict)
     attempted_steps: list[str] = Field(default_factory=list)
+    durations_ms: dict[str, float] = Field(default_factory=dict)
 
     def select_agent(self, agent: str) -> None:
         """Record an agent selected for execution once."""
@@ -42,3 +43,7 @@ class ExecutionState(BaseModel):
         """Record a failure and increment the step retry counter."""
         self.errors.append(f"{step}: {error}")
         self.retry_counts[step] = self.retry_counts.get(step, 0) + 1
+
+    def record_duration(self, step: str, duration_ms: float) -> None:
+        """Record elapsed execution time for one request stage."""
+        self.durations_ms[step] = round(duration_ms, 2)

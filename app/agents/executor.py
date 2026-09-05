@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass, field
+from time import perf_counter
 
 from pydantic import BaseModel, Field
 
@@ -144,6 +145,9 @@ class PlanExecutor:
         cached = self._cache.get(cache_key)
         if cached is not None:
             step_key = f"{task.id}:{task.agent.value}"
+            await dependencies.emit(
+                "agent_completed", agent=task.agent.value, step=step_key, cached=True
+            )
             if dependencies.execution_state is not None:
                 dependencies.execution_state.select_agent(task.agent.value)
                 dependencies.execution_state.complete_step(step_key, cached)
@@ -153,6 +157,13 @@ class PlanExecutor:
         try:
             step_key = f"{task.id}:{task.agent.value}"
             dependencies.authorize(task.agent.value, step_key)
+            await dependencies.emit("agent_started", agent=task.agent.value, step=step_key)
+            await dependencies.emit(
+                "tool_started",
+                agent=task.agent.value,
+                tool=self._tool_name(task.agent),
+            )
+            started = perf_counter()
             result = await asyncio.wait_for(
                 self._call_agent(task.agent, self._prompt(task, context), dependencies),
                 timeout=self.task_timeout_seconds,
@@ -160,11 +171,30 @@ class PlanExecutor:
             self._cache[cache_key] = result
             if dependencies.execution_state is not None:
                 dependencies.execution_state.complete_step(step_key, result)
+                dependencies.execution_state.record_duration(
+                    step_key, (perf_counter() - started) * 1000
+                )
+            await dependencies.emit(
+                "tool_completed",
+                agent=task.agent.value,
+                tool=self._tool_name(task.agent),
+            )
+            await dependencies.emit("agent_completed", agent=task.agent.value, step=step_key)
             return TaskExecution(task_id=task.id, agent=task.agent, output=result)
         except Exception as error:
             if dependencies.execution_state is not None:
                 dependencies.execution_state.record_error(step_key, error)
             return TaskExecution(task_id=task.id, agent=task.agent, error=str(error))
+
+    @staticmethod
+    def _tool_name(agent: AgentName) -> str:
+        """Return the retrieval tool associated with a specialist agent."""
+        return {
+            AgentName.FOOD_SEARCH: "search_foods",
+            AgentName.NUTRITION_ANALYSIS: "analyze_nutrition",
+            AgentName.PRODUCT_COMPARISON: "compare_products",
+            AgentName.FOOD_RECOMMENDATION: "recommend_foods",
+        }[agent]
 
     async def _call_agent(
         self, agent: AgentName, prompt: str, dependencies: OrchestratorDependencies

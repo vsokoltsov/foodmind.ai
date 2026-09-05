@@ -7,7 +7,7 @@ class SearchQuery(BaseModel):
     """Common pagination and free-text search options."""
 
     text: str | None = None
-    limit: int = Field(default=20, ge=1, le=100)
+    limit: int = Field(default=10, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
     embedding: list[float] | None = Field(
         default=None,

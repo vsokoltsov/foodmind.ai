@@ -64,3 +64,4 @@ class ChatAnswerResponse(BaseModel):
     selected_agents: list[str] = Field(default_factory=list)
     completed_steps: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    durations_ms: dict[str, float] = Field(default_factory=dict)

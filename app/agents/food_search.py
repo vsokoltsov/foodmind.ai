@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any, Awaitable, Callable, TypeVar, cast
 
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, Field
@@ -15,12 +16,15 @@ from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.queries import (
     BrandedFoodQuery,
     OpenFoodFactsQuery,
+    SearchQuery,
     USDAFoodQuery,
     WikidataFoodQuery,
 )
 from app.repositories.usda import USDARepository
 from app.repositories.wikidata import WikidataFoodRepository
 from app.settings import get_settings
+
+QueryT = TypeVar("QueryT", bound=SearchQuery)
 
 
 class FoodSource(StrEnum):
@@ -100,6 +104,8 @@ class FoodSearchDependencies:
     usda: USDARepository
     openfoodfacts: OpenFoodFactsRepository
     retrieval_approach: str | None = None
+    retrieval_timeout_seconds: float = 5.0
+    _request_cache: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
 
     @classmethod
     def from_client(
@@ -118,7 +124,101 @@ class FoodSearchDependencies:
             usda=USDARepository(client),
             openfoodfacts=OpenFoodFactsRepository(client),
             retrieval_approach=retrieval_approach,
+            retrieval_timeout_seconds=get_settings().RETRIEVAL_TIMEOUT_SECONDS,
         )
+
+    def reset_request_cache(self) -> None:
+        """Discard cached retrieval tasks at the beginning of a user request."""
+        self._request_cache.clear()
+
+    async def search_wikidata(self, query: WikidataFoodQuery) -> list[FoodEntity]:
+        """Search Wikidata once per normalized query within one request."""
+        query = self._bounded(query)
+        return cast(
+            list[FoodEntity],
+            await self._cached("wikidata.search", query, lambda: self.wikidata.search(query)),
+        )
+
+    async def get_wikidata(self, entity_id: str) -> FoodEntity | None:
+        """Look up a Wikidata entity once per request."""
+        return cast(
+            FoodEntity | None,
+            await self._cached(
+                "wikidata.get", entity_id,
+                lambda: self.wikidata.get_by_id(entity_id),
+            ),
+        )
+
+    async def search_foundations(
+        self, query: USDAFoodQuery
+    ) -> list[FoundationFood]:
+        """Search USDA Foundation once per normalized query within one request."""
+        query = self._bounded(query)
+        return cast(
+            list[FoundationFood],
+            await self._cached(
+                "usda.foundation.search",
+                query,
+                lambda: self.usda.search_foundations(query),
+            ),
+        )
+
+    async def search_branded(self, query: BrandedFoodQuery) -> list[BrandedFood]:
+        """Search USDA Branded once per normalized query within one request."""
+        query = self._bounded(query)
+        return cast(
+            list[BrandedFood],
+            await self._cached(
+                "usda.branded.search",
+                query,
+                lambda: self.usda.search_branded(query),
+            ),
+        )
+
+    async def search_openfoodfacts(
+        self, query: OpenFoodFactsQuery
+    ) -> list[OpenFoodFactsProduct]:
+        """Search Open Food Facts once per normalized query within one request."""
+        query = self._bounded(query)
+        return cast(
+            list[OpenFoodFactsProduct],
+            await self._cached(
+                "openfoodfacts.search",
+                query,
+                lambda: self.openfoodfacts.search(query),
+            ),
+        )
+
+    async def _cached(
+        self,
+        operation: str,
+        query: object,
+        call: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """Share an in-flight retrieval task and bound its latency."""
+        serialized = query.model_dump_json() if isinstance(query, BaseModel) else str(query)
+        key = f"{operation}:{serialized}"
+        task = self._request_cache.get(key)
+        if task is None:
+            async def execute_call() -> Any:
+                """Adapt a generic awaitable to a task coroutine."""
+                return await call()
+
+            task = asyncio.create_task(execute_call())
+            self._request_cache[key] = task
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(task), timeout=self.retrieval_timeout_seconds
+            )
+        except Exception:
+            self._request_cache.pop(key, None)
+            raise
+
+    @staticmethod
+    def _bounded(query: QueryT) -> QueryT:
+        """Cap source results before they enter an agent's model context."""
+        maximum = get_settings().MAX_RETRIEVAL_RESULTS
+        return query.model_copy(update={"limit": min(query.limit, maximum)})
 
 
 @dataclass
@@ -144,10 +244,10 @@ class FoodSearchAgent:
             "results, provide the final answer immediately."
         )
         settings = get_settings()
-        model = settings.OPENAI_MODEL
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
             model = OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                model_name=model.removeprefix("openai:"),
                 provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
         self.agent = Agent(
@@ -191,7 +291,7 @@ class FoodSearchAgent:
         text = request.text or request.ingredient
         match request.source:
             case FoodSource.WIKIDATA:
-                foods = await ctx.deps.wikidata.search(
+                foods = await ctx.deps.search_wikidata(
                     WikidataFoodQuery(
                         text=text,
                         cuisine_id=request.cuisine,
@@ -200,13 +300,13 @@ class FoodSearchAgent:
                     )
                 )
             case FoodSource.USDA_FOUNDATION:
-                foods = await ctx.deps.usda.search_foundations(
+                foods = await ctx.deps.search_foundations(
                     USDAFoodQuery(
                         text=text, category=request.category, limit=request.limit
                     )
                 )
             case FoodSource.USDA_BRANDED:
-                foods = await ctx.deps.usda.search_branded(
+                foods = await ctx.deps.search_branded(
                     BrandedFoodQuery(
                         text=text,
                         category=request.category,
@@ -215,7 +315,7 @@ class FoodSearchAgent:
                     )
                 )
             case FoodSource.OPENFOODFACTS:
-                foods = await ctx.deps.openfoodfacts.search(
+                foods = await ctx.deps.search_openfoodfacts(
                     OpenFoodFactsQuery(
                         text=text,
                         barcode=request.text
@@ -228,7 +328,7 @@ class FoodSearchAgent:
                 )
             case None:
                 groups = await asyncio.gather(
-                    ctx.deps.wikidata.search(
+                    ctx.deps.search_wikidata(
                         WikidataFoodQuery(
                             text=text,
                             cuisine_id=request.cuisine,
@@ -236,12 +336,12 @@ class FoodSearchAgent:
                             limit=request.limit,
                         )
                     ),
-                    ctx.deps.usda.search_foundations(
+                    ctx.deps.search_foundations(
                         USDAFoodQuery(
                             text=text, category=request.category, limit=request.limit
                         )
                     ),
-                    ctx.deps.usda.search_branded(
+                    ctx.deps.search_branded(
                         BrandedFoodQuery(
                             text=text,
                             category=request.category,
@@ -249,7 +349,7 @@ class FoodSearchAgent:
                             limit=request.limit,
                         )
                     ),
-                    ctx.deps.openfoodfacts.search(
+                    ctx.deps.search_openfoodfacts(
                         OpenFoodFactsQuery(
                             text=text,
                             brand=request.brand,
@@ -275,7 +375,7 @@ class FoodSearchAgent:
         Returns:
             The matching result, or ``None`` when it does not exist.
         """
-        food = await ctx.deps.wikidata.get_by_id(entity_id)
+        food = await ctx.deps.get_wikidata(entity_id)
         return self._result(food) if food is not None else None
 
     @staticmethod

@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg://foodmind:foodmind@localhost:5432/foodmind"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "openai:gpt-5-mini"
+    OPENAI_PLANNER_MODEL: str | None = None
+    OPENAI_AGENT_MODEL: str | None = None
+    OPENAI_SYNTHESIS_MODEL: str | None = None
+    PLANNER_TIMEOUT_SECONDS: float = 30.0
+    AGENT_TIMEOUT_SECONDS: float = 120.0
+    SYNTHESIS_TIMEOUT_SECONDS: float = 60.0
+    RETRIEVAL_TIMEOUT_SECONDS: float = 5.0
+    MAX_RETRIEVAL_RESULTS: int = 10
     INGESTION_ARTIFACT_STORAGE: Literal["local", "gcs"] = "local"
     GCS_BUCKET: str | None = None
     GCS_PREFIX: str = "foodmind/ingestion"

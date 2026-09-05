@@ -73,10 +73,10 @@ class NutritionAnalysisAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_MODEL
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
             model = OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                model_name=model.removeprefix("openai:"),
                 provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
         self.agent = Agent(
@@ -113,13 +113,13 @@ class NutritionAnalysisAgent:
         match request.source:
             case USDAFoodSource.FOUNDATION:
                 groups = [
-                    await ctx.deps.usda.search_foundations(
+                    await ctx.deps.search_foundations(
                         USDAFoodQuery(text=request.food, category=request.category, limit=request.limit)
                     )
                 ]
             case USDAFoodSource.BRANDED:
                 groups = [
-                    await ctx.deps.usda.search_branded(
+                    await ctx.deps.search_branded(
                         BrandedFoodQuery(
                             text=request.food,
                             category=request.category,
@@ -131,10 +131,10 @@ class NutritionAnalysisAgent:
             case None:
                 groups = list(
                     await asyncio.gather(
-                        ctx.deps.usda.search_foundations(
+                        ctx.deps.search_foundations(
                             USDAFoodQuery(text=request.food, category=request.category, limit=request.limit)
                         ),
-                        ctx.deps.usda.search_branded(
+                        ctx.deps.search_branded(
                             BrandedFoodQuery(
                                 text=request.food,
                                 category=request.category,

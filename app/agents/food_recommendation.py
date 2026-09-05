@@ -63,10 +63,10 @@ class FoodRecommendationAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_MODEL
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
             model = OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                model_name=model.removeprefix("openai:"),
                 provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
         self.agent = Agent(
@@ -97,13 +97,37 @@ class FoodRecommendationAgent:
     ) -> list[RecommendedFood]:
         """Search source catalogs and return candidates passing all constraints."""
         text = " ".join(request.available_ingredients) or request.cuisine
-        wikidata, foundations, branded, openfoodfacts = await asyncio.gather(
-            ctx.deps.wikidata.search(WikidataFoodQuery(text=text, limit=request.limit)),
-            ctx.deps.usda.search_foundations(USDAFoodQuery(text=text, limit=request.limit)),
-            ctx.deps.usda.search_branded(BrandedFoodQuery(text=text, limit=request.limit)),
-            ctx.deps.openfoodfacts.search(OpenFoodFactsQuery(text=text, limit=request.limit)),
-        )
-        candidates = [*wikidata, *foundations, *branded, *openfoodfacts]
+        searches = []
+        if request.cuisine:
+            searches.append(
+                ctx.deps.search_wikidata(
+                    WikidataFoodQuery(text=text, limit=request.limit)
+                )
+            )
+        if request.nutrition_targets:
+            searches.append(
+                ctx.deps.search_foundations(
+                    USDAFoodQuery(text=text, limit=request.limit)
+                )
+            )
+        if request.allergens or request.dietary_preferences or request.nutrition_targets:
+            searches.extend(
+                [
+                    ctx.deps.search_branded(
+                        BrandedFoodQuery(text=text, limit=request.limit)
+                    ),
+                    ctx.deps.search_openfoodfacts(
+                        OpenFoodFactsQuery(text=text, limit=request.limit)
+                    ),
+                ]
+            )
+        if not searches:
+            searches.append(
+                ctx.deps.search_openfoodfacts(
+                    OpenFoodFactsQuery(text=text, limit=request.limit)
+                )
+            )
+        candidates = [food for group in await asyncio.gather(*searches) for food in group]
         recommendations = [
             self._candidate(food)
             for food in candidates

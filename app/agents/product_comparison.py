@@ -73,10 +73,10 @@ class ProductComparisonAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_MODEL
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
             model = OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"),
+                model_name=model.removeprefix("openai:"),
                 provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
         self.agent = Agent(
@@ -131,8 +131,8 @@ class ProductComparisonAgent:
         off_query = OpenFoodFactsQuery(text=None if barcode else value, barcode=barcode)
         usda_query = BrandedFoodQuery(text=None if barcode else value, brand=brand, barcode=barcode)
         off_products, usda_products = await asyncio.gather(
-            ctx.deps.openfoodfacts.search(off_query),
-            ctx.deps.usda.search_branded(usda_query),
+            ctx.deps.search_openfoodfacts(off_query),
+            ctx.deps.search_branded(usda_query),
         )
         if usda_products:
             return self._from_usda(usda_products[0], criteria)

@@ -1,10 +1,13 @@
-"""Guarded multi-agent orchestrator for FoodMind queries."""
+"""Low-latency, guarded multi-agent orchestrator for FoodMind queries."""
 
+import asyncio
+import json
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
+from pydantic_ai import Agent, AgentRunResult, UsageLimits
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -26,8 +29,12 @@ from app.agents.product_comparison import (
     ProductComparisonAgent,
     ProductComparisonAnswer,
 )
-from app.agents.planner import DelegationTask, ExecutionPlan, FoodMindPlanner
+from app.agents.planner import AgentName, ExecutionPlan, FoodMindPlanner
+from app.agents.router import FoodMindRouter, RouteKind
 from app.settings import get_settings
+
+if TYPE_CHECKING:
+    from app.agents.executor import ExecutionReport, PlanExecutor
 
 
 class OrchestratorAnswer(BaseModel):
@@ -35,6 +42,12 @@ class OrchestratorAnswer(BaseModel):
 
     answer: str
     used_agents: list[str] = Field(default_factory=list)
+
+
+class OrchestratorRunResult(BaseModel):
+    """Minimal result wrapper shared by direct and planned execution paths."""
+
+    output: OrchestratorAnswer
 
 
 @dataclass
@@ -98,39 +111,53 @@ class FoodMindOrchestrator:
 
     instructions: str | None = None
     planner: FoodMindPlanner = field(init=False)
-    agent: Agent[OrchestratorDependencies, OrchestratorAnswer] = field(init=False)
+    router: FoodMindRouter = field(init=False)
+    executor: "PlanExecutor" = field(init=False)
+    synthesizer: Agent[None, OrchestratorAnswer] = field(init=False)
+    food_search: FoodSearchAgent = field(init=False)
+    nutrition_analysis: NutritionAnalysisAgent = field(init=False)
+    product_comparison: ProductComparisonAgent = field(init=False)
+    food_recommendation: FoodRecommendationAgent = field(init=False)
 
     def __post_init__(self) -> None:
-        """Create the orchestrator and register specialist-agent tools."""
+        """Create the request router, plan executor, and final synthesizer."""
         settings = get_settings()
         self.planner = FoodMindPlanner()
-        model = settings.OPENAI_MODEL
+        self.router = FoodMindRouter()
+        self.food_search = FoodSearchAgent()
+        self.nutrition_analysis = NutritionAnalysisAgent()
+        self.product_comparison = ProductComparisonAgent()
+        self.food_recommendation = FoodRecommendationAgent()
+        from app.agents.executor import PlanExecutor
+
+        self.executor = PlanExecutor(
+            task_timeout_seconds=settings.AGENT_TIMEOUT_SECONDS
+        )
+        model = settings.OPENAI_SYNTHESIS_MODEL or settings.OPENAI_MODEL
         if settings.OPENAI_API_KEY:
-            model= OpenAIChatModel(
-                model_name=settings.OPENAI_MODEL.removeprefix("openai:"), 
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY)
+            model = OpenAIChatModel(
+                model_name=model.removeprefix("openai:"),
+                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
             )
-        self.agent = Agent(
+        self.synthesizer = Agent(
             model,
-            deps_type=OrchestratorDependencies,
             output_type=OrchestratorAnswer,
             instructions=(
-                "You are the FoodMind orchestrator. Delegate work to specialist "
-                "agent tools when their expertise is needed. You may call several "
-                "tools, but do not repeat an agent unnecessarily. Synthesize their "
-                "returned evidence into one answer and never invent facts. "
+                "You are the FoodMind answer synthesizer. Combine only the supplied "
+                "specialist evidence into a concise, useful answer. Do not invent "
+                "facts, mention missing evidence when relevant, and list the agents "
+                "that supplied evidence. "
                 f"{self.instructions or ''}"
             ).strip(),
             defer_model_check=not bool(settings.OPENAI_API_KEY),
         )
-        self.agent.tool(self.run_food_search)
-        self.agent.tool(self.run_nutrition_analysis)
-        self.agent.tool(self.run_product_comparison)
-        self.agent.tool(self.run_food_recommendation)
 
     async def create_plan(self, prompt: str) -> AgentRunResult[ExecutionPlan]:
         """Create a structured plan before executing specialist tools."""
-        return await self.planner.plan(prompt)
+        return await asyncio.wait_for(
+            self.planner.plan(prompt),
+            timeout=get_settings().PLANNER_TIMEOUT_SECONDS,
+        )
 
     async def run(
         self,
@@ -138,99 +165,158 @@ class FoodMindOrchestrator:
         *,
         deps: OrchestratorDependencies,
         usage_limits: UsageLimits | None = None,
-    ) -> AgentRunResult[OrchestratorAnswer]:
-        """Run one orchestrated request with a fresh delegation budget."""
+    ) -> OrchestratorRunResult:
+        """Run a direct specialist or a planned concurrent workflow."""
+        self._bind_agents(deps)
         deps.reset_budget()
+        deps.repositories.reset_request_cache()
         deps.original_prompt = prompt
-        deps.execution_state = ExecutionState(original_query=prompt, rewritten_query=prompt)
-        return await self.agent.run(prompt, deps=deps, usage_limits=usage_limits)
+        deps.execution_state = ExecutionState(
+            original_query=prompt, rewritten_query=prompt
+        )
+        route = self.router.route(prompt)
+        if route.kind is RouteKind.DIRECT and route.agent is not None:
+            return await self._run_direct(route.agent, prompt, deps, usage_limits)
 
-    async def _delegate(
+        try:
+            started = perf_counter()
+            plan = await self.create_plan(prompt)
+            deps.execution_state.record_duration(
+                "planner", (perf_counter() - started) * 1000
+            )
+        except Exception as error:
+            deps.execution_state.record_error("planner", error)
+            await deps.emit("planner_error", error=str(error))
+            raise
+        report = await self.executor.execute(
+            plan.output, prompt=prompt, dependencies=deps
+        )
+        return await self._synthesize(prompt, report)
+
+    def _bind_agents(self, deps: OrchestratorDependencies) -> None:
+        """Reuse process-scoped specialist agents with request-scoped repositories."""
+        deps.food_search = self.food_search
+        deps.nutrition_analysis = self.nutrition_analysis
+        deps.product_comparison = self.product_comparison
+        deps.food_recommendation = self.food_recommendation
+
+    async def _run_direct(
         self,
-        ctx: RunContext[OrchestratorDependencies],
-        name: str,
-        call: Callable[[str], Awaitable[Any]],
-        task: DelegationTask,
-    ) -> Any:
-        """Authorize and execute one specialist-agent call."""
-        step_key = f"{name}:{task.objective}"
+        agent: AgentName,
+        prompt: str,
+        deps: OrchestratorDependencies,
+        usage_limits: UsageLimits | None,
+    ) -> OrchestratorRunResult:
+        """Run one clear specialist request without planner or synthesis calls."""
+        step_key = f"direct:{agent.value}"
+        deps.authorize(agent.value, step_key)
+        await deps.emit("agent_started", agent=agent.value, step=step_key)
+        await deps.emit("tool_started", agent=agent.value, tool=self._tool_name(agent))
+        started = perf_counter()
         try:
-            ctx.deps.authorize(name, step_key)
-            await ctx.deps.emit("agent_started", agent=name, step=step_key)
+            result = await asyncio.wait_for(
+                self._call_agent(agent, prompt, deps, usage_limits),
+                timeout=get_settings().AGENT_TIMEOUT_SECONDS,
+            )
         except Exception as error:
-            if ctx.deps.execution_state is not None:
-                ctx.deps.execution_state.record_error(step_key, error)
-            await ctx.deps.emit("agent_error", agent=name, step=step_key, error=str(error))
+            if deps.execution_state is not None:
+                deps.execution_state.record_error(step_key, error)
+            await deps.emit("agent_error", agent=agent.value, step=step_key, error=str(error))
             raise
-        prompt = task.objective
-        if ctx.deps.original_prompt:
-            prompt += f"\n\nOriginal user request:\n{ctx.deps.original_prompt}"
-        if task.context:
-            prompt += f"\n\nRelevant context:\n{task.context}"
-        if task.required_fields:
-            prompt += "\n\nRequired fields: " + ", ".join(task.required_fields)
-        try:
-            result = await call(prompt)
-        except Exception as error:
-            if ctx.deps.execution_state is not None:
-                ctx.deps.execution_state.record_error(step_key, error)
-            await ctx.deps.emit("agent_error", agent=name, step=step_key, error=str(error))
-            raise
-        await ctx.deps.emit("agent_completed", agent=name, step=step_key)
-        if ctx.deps.execution_state is not None:
-            ctx.deps.execution_state.complete_step(step_key, result.output)
-        return result
-
-    async def run_food_search(
-        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
-    ) -> FoodSearchAnswer:
-        """Delegate food discovery to the food-search agent."""
-        result = await self._delegate(
-            ctx,
-            "food_search",
-            lambda prompt: ctx.deps.food_search.run(prompt, deps=ctx.deps.repositories),
-            task,
+        if deps.execution_state is not None:
+            deps.execution_state.complete_step(step_key, result)
+            deps.execution_state.record_duration(
+                step_key, (perf_counter() - started) * 1000
+            )
+        await deps.emit("tool_completed", agent=agent.value, tool=self._tool_name(agent))
+        await deps.emit("agent_completed", agent=agent.value, step=step_key)
+        return OrchestratorRunResult(
+            output=OrchestratorAnswer(answer=result.answer, used_agents=[agent.value])
         )
-        return result.output
 
-    async def run_nutrition_analysis(
-        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
-    ) -> NutritionAnalysisAnswer:
-        """Delegate nutrient analysis to the nutrition agent."""
-        result = await self._delegate(
-            ctx,
-            "nutrition_analysis",
-            lambda prompt: ctx.deps.nutrition_analysis.run(
-                prompt, deps=ctx.deps.repositories
+    async def _call_agent(
+        self,
+        agent: AgentName,
+        prompt: str,
+        deps: OrchestratorDependencies,
+        usage_limits: UsageLimits | None,
+    ) -> FoodSearchAnswer | NutritionAnalysisAnswer | ProductComparisonAnswer | FoodRecommendationAnswer:
+        """Dispatch a direct specialist request to its typed agent."""
+        match agent:
+            case AgentName.FOOD_SEARCH:
+                return (await deps.food_search.run(prompt, deps=deps.repositories)).output
+            case AgentName.NUTRITION_ANALYSIS:
+                return (
+                    await deps.nutrition_analysis.run(
+                        prompt, deps=deps.repositories, usage_limits=usage_limits
+                    )
+                ).output
+            case AgentName.PRODUCT_COMPARISON:
+                return (await deps.product_comparison.run(prompt, deps=deps.repositories)).output
+            case AgentName.FOOD_RECOMMENDATION:
+                return (await deps.food_recommendation.run(prompt, deps=deps.repositories)).output
+
+    async def _synthesize(
+        self, prompt: str, report: "ExecutionReport"
+    ) -> OrchestratorRunResult:
+        """Generate one response from compact successful specialist evidence."""
+        successful = report.successful
+        if not successful:
+            raise ValueError("No specialist task completed successfully")
+        if len(successful) == 1:
+            task = successful[0]
+            if task.output is None:
+                raise ValueError("Successful task is missing an output")
+            return OrchestratorRunResult(
+                output=OrchestratorAnswer(
+                    answer=task.output.answer,
+                    used_agents=[task.agent.value],
+                )
+            )
+        evidence = [
+            {
+                "agent": task.agent.value,
+                "output": self._compact(task.output.model_dump(mode="json")),
+            }
+            for task in successful
+            if task.output is not None
+        ]
+        started = perf_counter()
+        result = await asyncio.wait_for(
+            self.synthesizer.run(
+                f"User request:\n{prompt}\n\nSpecialist evidence:\n"
+                f"{json.dumps(evidence, ensure_ascii=False)}"
             ),
-            task,
+            timeout=get_settings().SYNTHESIS_TIMEOUT_SECONDS,
         )
-        return result.output
+        output = result.output
+        if report.execution_state is not None:
+            report.execution_state.record_duration(
+                "synthesis", (perf_counter() - started) * 1000
+            )
+        output.used_agents = [task.agent.value for task in successful]
+        return OrchestratorRunResult(output=output)
 
-    async def run_product_comparison(
-        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
-    ) -> ProductComparisonAnswer:
-        """Delegate product comparison to the comparison agent."""
-        result = await self._delegate(
-            ctx,
-            "product_comparison",
-            lambda prompt: ctx.deps.product_comparison.run(
-                prompt, deps=ctx.deps.repositories
-            ),
-            task,
-        )
-        return result.output
+    @staticmethod
+    def _tool_name(agent: AgentName) -> str:
+        """Return the specialist's externally visible retrieval tool name."""
+        return {
+            AgentName.FOOD_SEARCH: "search_foods",
+            AgentName.NUTRITION_ANALYSIS: "analyze_nutrition",
+            AgentName.PRODUCT_COMPARISON: "compare_products",
+            AgentName.FOOD_RECOMMENDATION: "recommend_foods",
+        }[agent]
 
-    async def run_food_recommendation(
-        self, ctx: RunContext[OrchestratorDependencies], task: DelegationTask
-    ) -> FoodRecommendationAnswer:
-        """Delegate constrained recommendations to the recommendation agent."""
-        result = await self._delegate(
-            ctx,
-            "food_recommendation",
-            lambda prompt: ctx.deps.food_recommendation.run(
-                prompt, deps=ctx.deps.repositories
-            ),
-            task,
-        )
-        return result.output
+    @classmethod
+    def _compact(cls, value: Any) -> Any:
+        """Bound evidence size before it is sent to the synthesis model."""
+        if isinstance(value, str):
+            return value[:500]
+        if isinstance(value, list):
+            return [cls._compact(item) for item in value[:3]]
+        if isinstance(value, dict):
+            return {
+                key: cls._compact(item)
+                for key, item in list(value.items())[:12]
+            }
+        return value

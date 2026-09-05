@@ -58,6 +58,12 @@ def _stream_message(user_id: UUID, message: str, chat_id: str | None, status) ->
                     elif event == "agent_completed":
                         agent = str(data.get("agent", "unknown")).replace("_", " ").title()
                         status.write(f"Agent completed: {agent}")
+                    elif event == "tool_started":
+                        tool = str(data.get("tool", "unknown")).replace("_", " ")
+                        status.write(f"Tool: {tool}")
+                    elif event == "tool_completed":
+                        tool = str(data.get("tool", "unknown")).replace("_", " ")
+                        status.write(f"Tool completed: {tool}")
                     elif event == "completed":
                         answer = data
                     elif event == "error":
