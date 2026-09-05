@@ -14,7 +14,7 @@ def upgrade() -> None:
     op.create_table(
         "conversations",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("user_id", sa.Uuid(), nullable=True),
+        sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("title", sa.String(length=255), nullable=True),
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column(
