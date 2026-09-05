@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     """Request body for submitting one user message."""
 
     message: str = Field(min_length=1)
+    user_id: UUID
 
 
 class ChatCreateRequest(BaseModel):
@@ -16,6 +17,16 @@ class ChatCreateRequest(BaseModel):
 
     title: str | None = None
     message: str = Field(min_length=1)
+    user_id: UUID
+
+
+class ChatStreamRequest(BaseModel):
+    """Request body for streamed chat execution."""
+
+    message: str = Field(min_length=1)
+    user_id: UUID
+    chat_id: UUID | None = None
+    title: str | None = None
 
 
 class MessageResponse(BaseModel):
@@ -31,6 +42,7 @@ class ChatResponse(BaseModel):
     """Serialized chat summary."""
 
     id: UUID
+    user_id: UUID
     title: str | None = None
     summary: str | None = None
 
@@ -49,3 +61,6 @@ class ChatAnswerResponse(BaseModel):
     message_id: UUID
     answer: str
     used_agents: list[str] = Field(default_factory=list)
+    selected_agents: list[str] = Field(default_factory=list)
+    completed_steps: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

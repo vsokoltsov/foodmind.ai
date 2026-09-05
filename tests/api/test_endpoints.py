@@ -38,6 +38,7 @@ def test_health_endpoint_reports_elasticsearch() -> None:
 def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> None:
     async def scenario() -> None:
         conversation_id = uuid4()
+        user_id = uuid4()
         session = AsyncMock()
         orchestrator = AsyncMock()
         orchestrator.run.return_value = SimpleNamespace(
@@ -51,7 +52,7 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
 
         class FakeConversationRepository:
             def __init__(self, _session):
-                self.conversation = SimpleNamespace(id=conversation_id)
+                self.conversation = SimpleNamespace(id=conversation_id, user_id=user_id)
 
             async def create(self, _entity):
                 return self.conversation
@@ -76,7 +77,7 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
         monkeypatch.setattr(endpoints, "SessionFactory", lambda: _SessionContext(session))
 
         response = await endpoints.chat(
-            ChatRequest(message="Find apples"),
+            ChatRequest(message="Find apples", user_id=user_id),
             conversation_id,
             _request(resources),
         )
@@ -84,6 +85,6 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
         assert response.answer == "Here are the results"
         assert response.used_agents == ["food_search"]
         orchestrator.run.assert_awaited_once()
-        session.commit.assert_awaited_once()
+        assert session.commit.await_count == 2
 
     run(scenario())

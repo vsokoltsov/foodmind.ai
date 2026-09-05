@@ -24,7 +24,9 @@ def test_conversation_repository_crud() -> None:
         session.get.return_value = conversation
         repository = ConversationRepository(session)
 
-        created = await repository.create(ConversationAggregate(title="Lunch"))
+        created = await repository.create(
+            ConversationAggregate(user_id=conversation.user_id, title="Lunch")
+        )
         fetched = await repository.get(conversation.id)
         await repository.update(created, title="Dinner", ignored="value")
         await repository.delete(created)
