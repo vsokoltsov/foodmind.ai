@@ -29,6 +29,22 @@ class ChatStreamRequest(BaseModel):
     title: str | None = None
 
 
+class FeedbackRequest(BaseModel):
+    """A user's usefulness assessment for one assistant message."""
+
+    user_id: UUID
+    is_useful: bool
+
+
+class FeedbackResponse(BaseModel):
+    """Serialized feedback associated with one message."""
+
+    id: UUID
+    message_id: UUID
+    user_id: UUID
+    is_useful: bool
+
+
 class MessageResponse(BaseModel):
     """Serialized chat message."""
 
@@ -36,6 +52,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     agent_name: str | None = None
+    feedback: FeedbackResponse | None = None
 
 
 class ChatResponse(BaseModel):

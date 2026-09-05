@@ -42,13 +42,17 @@ class ConversationRepository:
 
     async def list(self, *, user_id: UUID | None = None) -> Sequence[ConversationModel]:
         """Return conversations, optionally restricted to a user."""
-        statement = select(ConversationModel).order_by(ConversationModel.updated_at.desc())
+        statement = select(ConversationModel).order_by(
+            ConversationModel.updated_at.desc()
+        )
         if user_id is not None:
             statement = statement.where(ConversationModel.user_id == user_id)
         result = await self.session.scalars(statement)
         return result.all()
 
-    async def update(self, conversation: ConversationModel, **values: Any) -> ConversationModel:
+    async def update(
+        self, conversation: ConversationModel, **values: Any
+    ) -> ConversationModel:
         """Update allowed conversation attributes and flush the change."""
         for name in ("user_id", "title", "summary"):
             if name in values:
@@ -87,7 +91,9 @@ class MessageRepository:
         """Return a message by identifier."""
         return await self.session.get(MessageModel, message_id)
 
-    async def list_by_conversation(self, conversation_id: UUID) -> Sequence[MessageModel]:
+    async def list_by_conversation(
+        self, conversation_id: UUID
+    ) -> Sequence[MessageModel]:
         """Return messages in chronological order for a conversation."""
         result = await self.session.scalars(
             select(MessageModel)
@@ -135,9 +141,7 @@ class TurnExecutionRepository:
         """Return an execution by identifier."""
         return await self.session.get(TurnExecutionModel, execution_id)
 
-    async def get_for_message(
-        self, user_message_id: UUID
-    ) -> TurnExecutionModel | None:
+    async def get_for_message(self, user_message_id: UUID) -> TurnExecutionModel | None:
         """Return the execution associated with a user message."""
         result = await self.session.scalars(
             select(TurnExecutionModel).where(
