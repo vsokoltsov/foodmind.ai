@@ -151,6 +151,18 @@ services:
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       DATABASE_URL: ${API_DATABASE_URL}
+    command:
+      - uvicorn
+      - app.api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/app
+    volumes:
+      - ./app:/app/app:ro
     ports:
       - "8000:8000"
     depends_on:
