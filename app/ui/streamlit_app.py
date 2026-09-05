@@ -52,15 +52,12 @@ def _stream_message(user_id: UUID, message: str, chat_id: str | None, status) ->
                     data = json.loads(line[6:])
                     if event == "chat_created":
                         resolved_chat_id = data["chat_id"]
-                        status.write("Chat created")
-                    elif event == "orchestrator_started":
-                        status.write("Orchestrator started")
-                    elif event == "progress":
-                        status.write(data.get("message", "Agents are still working"))
-                    elif event.endswith("_started"):
-                        status.write(event.removesuffix("_started").replace("_", " ").title())
-                    elif event.endswith("_completed"):
-                        status.write(event.removesuffix("_completed").replace("_", " ").title())
+                    elif event == "agent_started":
+                        agent = str(data.get("agent", "unknown")).replace("_", " ").title()
+                        status.write(f"Agent: {agent}")
+                    elif event == "agent_completed":
+                        agent = str(data.get("agent", "unknown")).replace("_", " ").title()
+                        status.write(f"Agent completed: {agent}")
                     elif event == "completed":
                         answer = data
                     elif event == "error":
