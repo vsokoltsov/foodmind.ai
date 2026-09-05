@@ -36,7 +36,9 @@ def _request(method: str, path: str, **kwargs):
         return response.json()
 
 
-def _stream_message(user_id: UUID, message: str, chat_id: str | None, status) -> tuple[str | None, str]:
+def _stream_message(
+    user_id: UUID, message: str, chat_id: str | None, status
+) -> tuple[str | None, dict]:
     """Stream execution events and return the final answer and chat ID."""
     payload = {"user_id": str(user_id), "message": message, "chat_id": chat_id}
     answer: dict = {}
@@ -53,10 +55,14 @@ def _stream_message(user_id: UUID, message: str, chat_id: str | None, status) ->
                     if event == "chat_created":
                         resolved_chat_id = data["chat_id"]
                     elif event == "agent_started":
-                        agent = str(data.get("agent", "unknown")).replace("_", " ").title()
+                        agent = (
+                            str(data.get("agent", "unknown")).replace("_", " ").title()
+                        )
                         status.write(f"Agent: {agent}")
                     elif event == "agent_completed":
-                        agent = str(data.get("agent", "unknown")).replace("_", " ").title()
+                        agent = (
+                            str(data.get("agent", "unknown")).replace("_", " ").title()
+                        )
                         status.write(f"Agent completed: {agent}")
                     elif event == "tool_started":
                         tool = str(data.get("tool", "unknown")).replace("_", " ")
@@ -68,7 +74,55 @@ def _stream_message(user_id: UUID, message: str, chat_id: str | None, status) ->
                         answer = data
                     elif event == "error":
                         raise RuntimeError(data.get("message", "Request failed"))
-    return resolved_chat_id, answer.get("answer", "")
+    return resolved_chat_id, answer
+
+
+def _record_feedback(
+    user_id: UUID, chat_id: str, message: dict, is_useful: bool
+) -> None:
+    """Persist feedback and update the displayed message state."""
+    feedback = _request(
+        "PUT",
+        f"/chats/{chat_id}/messages/{message['id']}/feedback",
+        json={"user_id": str(user_id), "is_useful": is_useful},
+    )
+    message["feedback"] = feedback
+
+
+def _render_feedback_controls(
+    user_id: UUID, chat_id: str | None, message: dict
+) -> None:
+    """Render usefulness controls for a persisted assistant message."""
+    if chat_id is None or not message.get("id"):
+        return
+
+    feedback = message.get("feedback")
+    selected = feedback.get("is_useful") if feedback else None
+    helpful, not_helpful = st.columns(2)
+    with helpful:
+        if st.button(
+            "👍 Useful",
+            key=f"feedback-useful-{message['id']}",
+            type="primary" if selected is True else "secondary",
+        ):
+            _record_feedback(user_id, chat_id, message, True)
+            st.rerun()
+    with not_helpful:
+        if st.button(
+            "👎 Not useful",
+            key=f"feedback-not-useful-{message['id']}",
+            type="primary" if selected is False else "secondary",
+        ):
+            _record_feedback(user_id, chat_id, message, False)
+            st.rerun()
+
+
+def _chat_label(chat: dict) -> str:
+    """Return a readable and unique label for a chat in the sidebar."""
+    title = chat.get("title") or chat.get("summary")
+    if title:
+        return str(title)
+    return f"Untitled chat · {str(chat['id'])[:8]}"
 
 
 def main() -> None:
@@ -93,33 +147,58 @@ def main() -> None:
         except httpx.HTTPError as error:
             st.error(f"Could not load chats: {error}")
             chats = []
-        options = {chat["id"]: chat.get("title") or chat.get("summary") or "Untitled chat" for chat in chats}
-        selected = st.selectbox("Previous chats", [None, *options], format_func=lambda item: "New chat" if item is None else options[item], label_visibility="collapsed")
-        if selected and selected != st.session_state.chat_id:
-            data = _request("GET", f"/chats/{selected}/messages", params={"user_id": str(user_id)})
-            st.session_state.chat_id = selected
-            st.session_state.messages = [{"role": item["role"], "content": item["content"]} for item in data["messages"]]
+        for chat in chats:
+            chat_id = str(chat["id"])
+            if st.button(
+                _chat_label(chat),
+                key=f"chat-{chat_id}",
+                type="primary" if chat_id == st.session_state.chat_id else "secondary",
+                use_container_width=True,
+            ):
+                data = _request(
+                    "GET",
+                    f"/chats/{chat_id}/messages",
+                    params={"user_id": str(user_id)},
+                )
+                st.session_state.chat_id = chat_id
+                st.session_state.messages = data["messages"]
+                st.rerun()
 
     st.title("FoodMind")
     for item in st.session_state.messages:
         with st.chat_message(item["role"]):
             st.markdown(item["content"])
+            if item["role"] == "assistant":
+                _render_feedback_controls(user_id, st.session_state.chat_id, item)
 
     if prompt := st.chat_input("Ask about food, nutrition, or recommendations…"):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         with st.chat_message("assistant"):
+            result: dict = {}
             with st.status("Thinking…") as status:
                 try:
-                    chat_id, answer = _stream_message(user_id, prompt, st.session_state.chat_id, status)
+                    chat_id, result = _stream_message(
+                        user_id, prompt, st.session_state.chat_id, status
+                    )
                     st.session_state.chat_id = chat_id
+                    answer = result.get("answer", "")
                     status.update(label="Completed", state="complete", expanded=False)
                 except (httpx.HTTPError, RuntimeError) as error:
                     answer = f"The FoodMind API is unavailable: {error}"
                     status.update(label="Failed", state="error", expanded=True)
             st.markdown(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+            assistant_message = {
+                "id": result.get("message_id"),
+                "role": "assistant",
+                "content": answer,
+                "feedback": None,
+            }
+            _render_feedback_controls(
+                user_id, st.session_state.chat_id, assistant_message
+            )
+        st.session_state.messages.append(assistant_message)
 
 
 if __name__ == "__main__":
