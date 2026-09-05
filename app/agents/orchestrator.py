@@ -51,6 +51,12 @@ class OrchestratorDependencies:
     calls: dict[str, int] = field(default_factory=dict)
     original_prompt: str | None = None
     execution_state: ExecutionState | None = None
+    event_callback: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
+
+    async def emit(self, event: str, **data: Any) -> None:
+        """Publish an observable execution event when a sink is configured."""
+        if self.event_callback is not None:
+            await self.event_callback(event, data)
 
     @classmethod
     def from_repositories(
@@ -150,9 +156,11 @@ class FoodMindOrchestrator:
         step_key = f"{name}:{task.objective}"
         try:
             ctx.deps.authorize(name, step_key)
+            await ctx.deps.emit("agent_started", agent=name, step=step_key)
         except Exception as error:
             if ctx.deps.execution_state is not None:
                 ctx.deps.execution_state.record_error(step_key, error)
+            await ctx.deps.emit("agent_error", agent=name, step=step_key, error=str(error))
             raise
         prompt = task.objective
         if ctx.deps.original_prompt:
@@ -166,7 +174,9 @@ class FoodMindOrchestrator:
         except Exception as error:
             if ctx.deps.execution_state is not None:
                 ctx.deps.execution_state.record_error(step_key, error)
+            await ctx.deps.emit("agent_error", agent=name, step=step_key, error=str(error))
             raise
+        await ctx.deps.emit("agent_completed", agent=name, step=step_key)
         if ctx.deps.execution_state is not None:
             ctx.deps.execution_state.complete_step(step_key, result.output)
         return result
