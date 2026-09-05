@@ -11,6 +11,6 @@ class Conversation(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID = Field(default_factory=uuid4)
-    user_id: UUID | None = None
+    user_id: UUID
     title: str | None = None
     summary: str | None = None
