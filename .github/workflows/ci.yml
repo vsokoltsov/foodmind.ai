@@ -48,6 +48,12 @@ jobs:
     # Secret Manager access is intentionally unavailable to forked pull requests.
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    # Model identifiers are configuration, not credentials. Keep the expensive
+    # tool-using work on GPT-5 Mini and use GPT-4.1 Mini for planning/synthesis.
+    env:
+      OPENAI_PLANNER_MODEL: openai:gpt-4.1-mini
+      OPENAI_AGENT_MODEL: openai:gpt-5-mini
+      OPENAI_SYNTHESIS_MODEL: openai:gpt-4.1-mini
     strategy:
       fail-fast: false
       matrix:
