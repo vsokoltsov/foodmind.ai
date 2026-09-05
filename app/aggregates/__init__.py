@@ -2,6 +2,7 @@
 
 from app.aggregates.branded_food import BrandedFood
 from app.aggregates.conversation import Conversation
+from app.aggregates.feedback import Feedback
 from app.aggregates.food_entity import FoodEntity
 from app.aggregates.foundation_food import FoundationFood
 from app.aggregates.message import Message
@@ -13,6 +14,7 @@ from app.aggregates.turn_execution import TurnExecution
 __all__ = [
     "BrandedFood",
     "Conversation",
+    "Feedback",
     "FoodEntity",
     "FoundationFood",
     "Message",
