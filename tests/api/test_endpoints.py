@@ -77,6 +77,7 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
 
         response = await endpoints.chat(
             ChatRequest(message="Find apples"),
+            conversation_id,
             _request(resources),
         )
 
