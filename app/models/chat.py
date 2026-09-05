@@ -4,16 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    ForeignKey,
-    JSON,
-    String,
-    Text,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -63,31 +54,6 @@ class Message(Base):
     )
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
-    feedbacks: Mapped[list["Feedback"]] = relationship(
-        back_populates="message", cascade="all, delete-orphan"
-    )
-
-
-class Feedback(Base):
-    """A user's usefulness assessment of one assistant message."""
-
-    __tablename__ = "feedbacks"
-    __table_args__ = (UniqueConstraint("message_id", "user_id"),)
-
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    message_id: Mapped[UUID] = mapped_column(
-        ForeignKey("messages.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[UUID] = mapped_column(nullable=False, index=True)
-    is_useful: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    message: Mapped[Message] = relationship(back_populates="feedbacks")
 
 
 class TurnExecution(Base):
