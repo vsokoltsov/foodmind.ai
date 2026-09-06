@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     SYNTHESIS_TIMEOUT_SECONDS: float = 60.0
     RETRIEVAL_TIMEOUT_SECONDS: float = 5.0
     MAX_RETRIEVAL_RESULTS: int = 10
+    OTEL_ENABLED: bool = True
+    OTEL_SERVICE_NAME: str = "foodmind-api"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318"
+    OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS: float = 10.0
     INGESTION_ARTIFACT_STORAGE: Literal["local", "gcs"] = "local"
     GCS_BUCKET: str | None = None
     GCS_PREFIX: str = "foodmind/ingestion"
