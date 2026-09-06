@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent
+from pydantic_ai import Agent, UsageLimits
 
 from app.agents.food_recommendation import FoodRecommendationAgent
 from app.agents.food_search import FoodSearchDependencies
@@ -96,7 +96,11 @@ class FoodRecommendationEvaluationRunner:
             }[approach]
             agent = FoodRecommendationAgent(instructions=instructions)
             for item in items:
-                response = await agent.run(item.question, deps=self.dependencies)
+                response = await agent.run(
+                    item.question,
+                    deps=self.dependencies,
+                    usage_limits=UsageLimits(request_limit=12, tool_calls_limit=4),
+                )
                 record = RecommendationEvaluationRecord(
                     approach=approach,
                     question=item.question,

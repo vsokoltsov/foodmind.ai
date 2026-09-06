@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, AgentRunResult, RunContext
+from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -76,8 +76,9 @@ class FoodRecommendationAgent:
             deps_type=FoodSearchDependencies,
             output_type=FoodRecommendationAnswer,
             instructions=(
-                "You recommend foods from the catalog. Always call recommend_foods "
-                "before answering. Respect every dietary preference, nutrition "
+                "You recommend foods from the catalog. Call recommend_foods exactly "
+                "once for each user request, then answer using its returned evidence; "
+                "never call the tool again after it returns. Respect every dietary preference, nutrition "
                 "target, available ingredient, and allergen exclusion. Use only "
                 "returned evidence and explain any unmet constraint. "
                 f"{self.instructions or ''}"
@@ -87,16 +88,28 @@ class FoodRecommendationAgent:
         self.agent.tool(self.recommend_foods)
 
     async def run(
-        self, prompt: str, *, deps: FoodSearchDependencies
+        self,
+        prompt: str,
+        *,
+        deps: FoodSearchDependencies,
+        usage_limits: UsageLimits | None = None,
     ) -> AgentRunResult[FoodRecommendationAnswer]:
-        """Run the recommendation agent with request-scoped repositories."""
+        """Run the recommendation agent with request-scoped repositories.
+
+        A bounded default prevents a model that repeatedly requests the retrieval
+        tool from exhausting the provider budget. Callers can provide a stricter
+        or wider limit for a particular workflow.
+        """
         settings = get_settings()
         model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        limits = usage_limits or UsageLimits(request_limit=12, tool_calls_limit=4)
         with tracing.span(
             "foodmind.llm.agent", {"foodmind.agent": "food_recommendation"}
         ) as span:
             try:
-                result = await self.agent.run(prompt, deps=deps)
+                result = await self.agent.run(
+                    prompt, deps=deps, usage_limits=limits
+                )
             except Exception:
                 span.set_attribute("foodmind.outcome", "error")
                 metrics.record_llm_failure(
