@@ -129,3 +129,67 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
         run: make ${{ matrix.target }}
+
+  deploy:
+    name: Build and deploy Helm release
+    needs: [quality, tests, evaluation]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME }}
+      GKE_NAMESPACE: ${{ vars.GKE_NAMESPACE }}
+      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      CLOUD_SQL_CONNECTION_NAME: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
+      GCP_WORKLOAD_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_SERVICE_ACCOUNT }}
+      GCS_BUCKET: ${{ vars.GCS_BUCKET }}
+      EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
+      ELASTICSEARCH_ENDPOINT: ${{ vars.ELASTICSEARCH_ENDPOINT }}
+      ELASTICSEARCH_USERNAME: ${{ vars.ELASTICSEARCH_USERNAME }}
+      API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: azure/setup-helm@v4
+
+      - name: Load runtime secrets from Secret Manager
+        shell: bash
+        run: |
+          for secret_name in OPENAI_API_KEY FOODMIND_DATABASE_PASSWORD KESTRA_DATABASE_PASSWORD ELASTICSEARCH_PASSWORD; do
+            secret_value="$(gcloud secrets versions access latest --secret="${secret_name}" --project="${GCP_PROJECT_ID}")"
+            echo "::add-mask::${secret_value}"
+            echo "${secret_name}=${secret_value}" >> "${GITHUB_ENV}"
+          done
+
+      - name: Build and push backend images
+        run: infra/deploy/build-images.sh
+
+      - name: Install application dependencies
+        run: uv sync --frozen --no-dev
+
+      - name: Deploy the Helm release
+        run: infra/helm/deploy.sh
