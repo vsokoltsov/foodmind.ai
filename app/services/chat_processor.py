@@ -8,13 +8,14 @@ from typing import Any
 from elasticsearch import AsyncElasticsearch
 
 from app.agents.food_search import FoodSearchDependencies
+from app.agents.conversation_context import ConversationContextBuilder
 from app.agents.orchestrator import FoodMindOrchestrator, OrchestratorDependencies
 from app.aggregates import Message
 from app.database import SessionFactory
 from app.messaging.models import ChatCommand, ChatExecutionResult
 from app.observability import metrics
 from app.observability.tracing import tracing
-from app.repositories.chat import MessageRepository
+from app.repositories.chat import ConversationRepository, MessageRepository
 
 
 EventCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -33,7 +34,17 @@ class ChatProcessor:
     ) -> ChatExecutionResult:
         """Process one command in a short-lived database session."""
         async with SessionFactory() as session:
+            conversations = ConversationRepository(session)
             messages = MessageRepository(session)
+            conversation = await conversations.get(command.chat_id)
+            if conversation is None or conversation.user_id != command.user_id:
+                raise ValueError("Chat does not belong to the command user")
+            previous_messages = await messages.list_by_conversation(command.chat_id)
+            context = ConversationContextBuilder().build(
+                summary=conversation.summary,
+                messages=previous_messages,
+                current_message=command.content,
+            )
             persistence_started = perf_counter()
             with tracing.span("foodmind.message.persist_user") as span:
                 try:
@@ -71,7 +82,7 @@ class ChatProcessor:
             with tracing.span("foodmind.message.orchestrator") as span:
                 try:
                     result = await self.orchestrator.run(
-                        command.content, deps=dependencies
+                        command.content, deps=dependencies, context=context
                     )
                     await event_callback("orchestrator_completed", {})
                 except Exception:

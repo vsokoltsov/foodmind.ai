@@ -28,6 +28,7 @@ from app.agents.product_comparison import (
 )
 from app.agents.query_rewriter import QueryRewriter
 from app.aggregates.model_configuration import ModelRole
+from app.aggregates.conversation_context import ConversationContext
 from app.agents.model_factory import ModelFactory
 from app.agents.planner import AgentName, ExecutionPlan, FoodMindPlanner
 from app.agents.router import FoodMindRouter, RouteKind
@@ -171,17 +172,19 @@ class FoodMindOrchestrator:
         prompt: str,
         *,
         deps: OrchestratorDependencies,
+        context: ConversationContext | None = None,
         usage_limits: UsageLimits | None = None,
     ) -> OrchestratorRunResult:
         """Run a direct specialist or a planned concurrent workflow."""
         run_started = perf_counter()
+        orchestration_prompt = context.render() if context is not None else prompt
         self._bind_agents(deps)
         deps.reset_budget()
         deps.repositories.reset_request_cache()
         deps.original_prompt = prompt
         deps.execution_state = ExecutionState(original_query=prompt)
         rewrite_started = perf_counter()
-        rewrite = await self.query_rewriter.rewrite(prompt)
+        rewrite = await self.query_rewriter.rewrite(orchestration_prompt)
         rewritten_prompt = rewrite.query
         deps.execution_state.rewritten_query = rewritten_prompt
         deps.execution_state.record_duration(
@@ -238,7 +241,7 @@ class FoodMindOrchestrator:
                     outcome="success",
                     duration_seconds=perf_counter() - execution_started,
                 )
-                result = await self._synthesize(prompt, report)
+                result = await self._synthesize(orchestration_prompt, report)
         except Exception:
             metrics.record_orchestrator_run(
                 route=route_name,
