@@ -59,6 +59,13 @@ variable "openai_api_key" {
   default     = null
 }
 
+variable "gemini_api_key" {
+  description = "Gemini API key stored in Google Cloud Secret Manager."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "github_wif_pool_id" {
   description = "Workload Identity Federation pool ID for GitHub Actions."
   type        = string

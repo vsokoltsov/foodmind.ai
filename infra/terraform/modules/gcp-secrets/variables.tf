@@ -10,6 +10,13 @@ variable "openai_api_key" {
   default     = null
 }
 
+variable "gemini_api_key" {
+  description = "Gemini key stored as a Secret Manager version."
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
 variable "github_actions_service_account_email" {
   description = "Service account allowed to read CI secrets."
   type        = string

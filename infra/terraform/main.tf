@@ -86,6 +86,7 @@ module "gcp_secrets" {
 
   project_id                           = var.project_id
   openai_api_key                       = var.openai_api_key
+  gemini_api_key                       = var.gemini_api_key
   github_actions_service_account_email = google_service_account.github_actions.email
 
   depends_on = [google_project_service.secret_manager]
@@ -105,4 +106,14 @@ resource "google_service_account" "ingestion" {
   account_id   = var.service_account_id
   display_name = "FoodMind ingestion"
   project      = var.project_id
+}
+
+module "vertex_ai" {
+  source = "./modules/vertex-ai"
+
+  project_id = var.project_id
+  service_account_emails = [
+    google_service_account.ingestion.email,
+    google_service_account.github_actions.email,
+  ]
 }

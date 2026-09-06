@@ -27,3 +27,13 @@ output "openai_secret_name" {
   description = "Secret Manager secret containing OPENAI_API_KEY."
   value       = module.gcp_secrets.openai_secret_name
 }
+
+output "gemini_secret_name" {
+  description = "Secret Manager secret containing GEMINI_API_KEY."
+  value       = module.gcp_secrets.gemini_secret_name
+}
+
+output "vertex_ai_api_service" {
+  description = "Vertex AI API enabled for the project."
+  value       = module.vertex_ai.api_service
+}
