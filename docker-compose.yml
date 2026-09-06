@@ -228,12 +228,12 @@ services:
     environment:
       FOODMIND_API_URL: http://api:8000
       PYTHONPATH: /app
-      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
-      STREAMLIT_SERVER_PORT: 7860
-    command: ["streamlit", "run", "app/ui/streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "7860"]
+      NICEGUI_STORAGE_SECRET: ${NICEGUI_STORAGE_SECRET:-foodmind-local-ui-secret}
+      NICEGUI_STORAGE_PATH: /app/.nicegui
+    command: ["python", "app/ui/nicegui_app.py"]
     volumes:
       - ./app/ui:/app/app/ui:ro
-      - ./.chainlit:/app/.chainlit:ro
+      - nicegui-data:/app/.nicegui
     ports:
       - "7860:7860"
     depends_on:
@@ -287,3 +287,4 @@ volumes:
   prometheus-data:
   grafana-data:
   tempo-data:
+  nicegui-data:

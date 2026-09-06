@@ -12,6 +12,7 @@ dependencies = [
     "google-cloud-storage>=2.18.0",
     "httpx>=0.27.0",
     "ijson>=3.5.1",
+    "nicegui>=3.16.0",
     "opentelemetry-api>=1.44.0",
     "opentelemetry-exporter-otlp-proto-http>=1.44.0",
     "opentelemetry-instrumentation-fastapi>=0.65b0",
@@ -23,8 +24,6 @@ dependencies = [
     "pydantic>=2.8.0",
     "pydantic-ai>=0.4.0",
     "pydantic-settings>=2.15.0",
-    "st-cookie>=1.0.0",
-    "streamlit>=1.63.0",
     "tqdm>=4.67.1",
     "uvicorn[standard]>=0.52.4",
 ]

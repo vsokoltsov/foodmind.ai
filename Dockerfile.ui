@@ -7,4 +7,4 @@ RUN uv sync --frozen --no-dev
 COPY app ./app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app" PYTHONUNBUFFERED=1
 EXPOSE 7860
-CMD ["streamlit", "run", "app/ui/streamlit_app.py", "--server.address", "0.0.0.0", "--server.port", "7860"]
+CMD ["python", "app/ui/nicegui_app.py"]
