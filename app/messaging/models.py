@@ -18,6 +18,7 @@ class ChatEventName(StrEnum):
     AGENT_ERROR = "agent_error"
     TOOL_STARTED = "tool_started"
     TOOL_COMPLETED = "tool_completed"
+    QUERY_REWRITTEN = "query_rewritten"
     COMPLETED = "completed"
     ERROR = "error"
 
