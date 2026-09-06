@@ -2,19 +2,18 @@
 
 import asyncio
 import json
-import logging
-from collections.abc import Awaitable, Callable
-from time import perf_counter
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.food_search import FoodSearchDependencies
-from app.agents.orchestrator import OrchestratorDependencies
-from app.aggregates import Conversation, Feedback, Message
+from app.aggregates import Conversation, Feedback
 from app.database import SessionFactory
+from app.messaging.models import (
+    ChatCommand,
+    ChatEventName,
+    ChatExecutionResult,
+)
 from app.observability import metrics
 from app.observability.tracing import tracing
 from app.repositories.chat import (
@@ -25,8 +24,8 @@ from app.repositories.feedback import FeedbackRepository
 
 from app.api.lifespan import ApplicationState
 from app.api.models import (
-    ChatAnswerResponse,
     ChatCreateRequest,
+    ChatSubmissionResponse,
     FeedbackRequest,
     FeedbackResponse,
     ChatMessagesResponse,
@@ -37,7 +36,6 @@ from app.api.models import (
 )
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
 def _sse(event: str, data: object) -> str:
@@ -66,11 +64,11 @@ async def health(request: Request) -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/chats", response_model=ChatAnswerResponse, status_code=201)
+@router.post("/chats", response_model=ChatSubmissionResponse, status_code=202)
 async def create_chat(
     payload: ChatCreateRequest, request: Request
-) -> ChatAnswerResponse:
-    """Create a chat and process its initial message atomically."""
+) -> ChatSubmissionResponse:
+    """Create a chat and submit its initial message to the worker."""
     resources = _resources(request)
     async with SessionFactory() as session:
         conversation = await ConversationRepository(session).create(
@@ -79,9 +77,16 @@ async def create_chat(
                 title=_chat_title(payload.message, payload.title),
             )
         )
-        return await _process_message(
-            session, conversation.id, payload.message, resources
-        )
+        await session.commit()
+    command = ChatCommand(
+        chat_id=conversation.id,
+        user_id=payload.user_id,
+        content=payload.message,
+    )
+    await resources.chat_broker.publish(command)
+    return ChatSubmissionResponse(
+        chat_id=conversation.id, execution_id=command.execution_id
+    )
 
 
 @router.post("/chats/stream")
@@ -92,16 +97,11 @@ async def stream_chat(
     resources = _resources(request)
 
     async def events():
-        async with SessionFactory() as session:
-            try:
-                queue: asyncio.Queue[tuple[str, dict[str, object]]] = asyncio.Queue()
-
-                async def publish(event: str, data: dict[str, object]) -> None:
-                    await queue.put((event, data))
-
-                yield _sse("started", {"message": "Request accepted"})
-                chat_id: UUID | None = payload.chat_id
-                if chat_id is None:
+        try:
+            yield _sse("started", {"message": "Request accepted"})
+            chat_id: UUID | None = payload.chat_id
+            if chat_id is None:
+                async with SessionFactory() as session:
                     conversation = await ConversationRepository(session).create(
                         Conversation(
                             user_id=payload.user_id,
@@ -109,162 +109,47 @@ async def stream_chat(
                         )
                     )
                     chat_id = conversation.id
-                    yield _sse("chat_created", {"chat_id": chat_id})
-                else:
+                    await session.commit()
+                yield _sse("chat_created", {"chat_id": chat_id})
+            else:
+                async with SessionFactory() as session:
                     conversation = await ConversationRepository(session).get(chat_id)
                     if conversation is None or conversation.user_id != payload.user_id:
                         yield _sse("error", {"message": "Chat not found"})
                         return
-                yield _sse("orchestrator_started", {})
-                task = asyncio.create_task(
-                    _process_message(
-                        session,
-                        chat_id,
-                        payload.message,
-                        resources,
-                        event_callback=publish,
-                    )
-                )
-                while not task.done():
+
+            command = ChatCommand(
+                chat_id=chat_id,
+                user_id=payload.user_id,
+                content=payload.message,
+            )
+            yield _sse("orchestrator_started", {})
+            async with resources.chat_broker.submit(command) as queue:
+                while True:
                     try:
-                        event, data = await asyncio.wait_for(queue.get(), timeout=10)
-                        yield _sse(event, data)
+                        event = await asyncio.wait_for(queue.get(), timeout=10)
                     except asyncio.TimeoutError:
                         yield _sse("progress", {"message": "Agents are still working"})
-                while not queue.empty():
-                    event, data = queue.get_nowait()
-                    yield _sse(event, data)
-                result = task.result()
-                yield _sse("completed", result.model_dump(mode="json"))
-            except Exception as error:
-                await session.rollback()
-                yield _sse("error", {"message": str(error)})
+                        continue
+                    match event.event:
+                        case ChatEventName.COMPLETED:
+                            result = ChatExecutionResult.model_validate(
+                                event.data["result"]
+                            )
+                            yield _sse("completed", result.model_dump(mode="json"))
+                            return
+                        case ChatEventName.ERROR:
+                            yield _sse("error", event.data)
+                            return
+                        case _:
+                            yield _sse(event.event.value, event.data)
+        except Exception as error:
+            yield _sse("error", {"message": str(error)})
 
     return StreamingResponse(
         events(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-async def _process_message(
-    session: AsyncSession,
-    chat_id: UUID,
-    content: str,
-    resources: ApplicationState,
-    event_callback: Callable[[str, dict[str, object]], Awaitable[None]] | None = None,
-) -> ChatAnswerResponse:
-    """Persist a user message, run the orchestrator, and persist its answer."""
-    messages = MessageRepository(session)
-    persistence_started = perf_counter()
-    with tracing.span("foodmind.message.persist_user") as span:
-        try:
-            await messages.create(
-                Message(conversation_id=chat_id, role="user", content=content)
-            )
-            # Do not hold a database transaction open while agents and LLMs run.
-            await session.commit()
-        except Exception:
-            span.set_attribute("foodmind.outcome", "error")
-            metrics.record_message_step(
-                step="persist_user_message",
-                outcome="error",
-                duration_seconds=perf_counter() - persistence_started,
-            )
-            raise
-        span.set_attribute("foodmind.outcome", "success")
-    metrics.record_message_step(
-        step="persist_user_message",
-        outcome="success",
-        duration_seconds=perf_counter() - persistence_started,
-    )
-    if event_callback is not None:
-        await event_callback("user_message_persisted", {"chat_id": chat_id})
-    dependencies = OrchestratorDependencies.from_repositories(
-        FoodSearchDependencies.from_client(
-            resources.elasticsearch, resources.retrieval_approach
-        )
-    )
-    dependencies.event_callback = event_callback
-    orchestrator_started = perf_counter()
-    with tracing.span("foodmind.message.orchestrator") as span:
-        try:
-            result = await resources.orchestrator.run(content, deps=dependencies)
-            if event_callback is not None:
-                await event_callback("orchestrator_completed", {})
-        except Exception as error:
-            span.set_attribute("foodmind.outcome", "error")
-            metrics.record_message_step(
-                step="orchestrator",
-                outcome="error",
-                duration_seconds=perf_counter() - orchestrator_started,
-            )
-            logger.exception("FoodMind orchestrator failed for chat %s", chat_id)
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Unable to process the request",
-            ) from error
-        span.set_attribute("foodmind.outcome", "success")
-    metrics.record_message_step(
-        step="orchestrator",
-        outcome="success",
-        duration_seconds=perf_counter() - orchestrator_started,
-    )
-
-    persistence_started = perf_counter()
-    with tracing.span("foodmind.message.persist_assistant") as span:
-        try:
-            assistant_message = await messages.create(
-                Message(
-                    conversation_id=chat_id,
-                    role="assistant",
-                    content=result.output.answer,
-                    agent_name=",".join(result.output.used_agents) or None,
-                )
-            )
-            await session.commit()
-            if event_callback is not None:
-                await event_callback(
-                    "assistant_message_persisted", {"chat_id": chat_id}
-                )
-        except Exception:
-            await session.rollback()
-            span.set_attribute("foodmind.outcome", "error")
-            metrics.record_message_step(
-                step="persist_assistant_message",
-                outcome="error",
-                duration_seconds=perf_counter() - persistence_started,
-            )
-            raise
-        span.set_attribute("foodmind.outcome", "success")
-    metrics.record_message_step(
-        step="persist_assistant_message",
-        outcome="success",
-        duration_seconds=perf_counter() - persistence_started,
-    )
-    return ChatAnswerResponse(
-        chat_id=chat_id,
-        message_id=assistant_message.id,
-        answer=result.output.answer,
-        used_agents=result.output.used_agents,
-        selected_agents=(
-            dependencies.execution_state.selected_agents
-            if dependencies.execution_state
-            else []
-        ),
-        completed_steps=(
-            dependencies.execution_state.completed_steps
-            if dependencies.execution_state
-            else []
-        ),
-        errors=(
-            dependencies.execution_state.errors if dependencies.execution_state else []
-        ),
-        durations_ms=(
-            dependencies.execution_state.durations_ms
-            if dependencies.execution_state
-            else {}
-        ),
     )
 
 
@@ -397,11 +282,15 @@ async def upsert_message_feedback(
         )
 
 
-@router.post("/chats/{chat_id}/messages", response_model=ChatAnswerResponse)
+@router.post(
+    "/chats/{chat_id}/messages",
+    response_model=ChatSubmissionResponse,
+    status_code=202,
+)
 async def chat(
     payload: ChatRequest, chat_id: UUID, request: Request
-) -> ChatAnswerResponse:
-    """Store a user message, run the orchestrator, and store its answer."""
+) -> ChatSubmissionResponse:
+    """Publish a chat command and immediately acknowledge its acceptance."""
     resources = _resources(request)
     async with SessionFactory() as session:
         conversations = ConversationRepository(session)
@@ -409,6 +298,12 @@ async def chat(
         if conversation is None or conversation.user_id != payload.user_id:
             raise HTTPException(status_code=404, detail="Chat not found")
 
-        return await _process_message(
-            session, conversation.id, payload.message, resources
-        )
+    command = ChatCommand(
+        chat_id=conversation.id,
+        user_id=payload.user_id,
+        content=payload.message,
+    )
+    await resources.chat_broker.publish(command)
+    return ChatSubmissionResponse(
+        chat_id=conversation.id, execution_id=command.execution_id
+    )

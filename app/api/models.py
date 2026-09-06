@@ -71,14 +71,9 @@ class ChatMessagesResponse(BaseModel):
     messages: list[MessageResponse]
 
 
-class ChatAnswerResponse(BaseModel):
-    """Response containing the assistant answer."""
+class ChatSubmissionResponse(BaseModel):
+    """Acknowledgement that a chat command was durably submitted."""
 
     chat_id: UUID
-    message_id: UUID
-    answer: str
-    used_agents: list[str] = Field(default_factory=list)
-    selected_agents: list[str] = Field(default_factory=list)
-    completed_steps: list[str] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
-    durations_ms: dict[str, float] = Field(default_factory=dict)
+    execution_id: UUID
+    status: str = "accepted"

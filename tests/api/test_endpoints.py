@@ -37,20 +37,23 @@ def test_health_endpoint_reports_elasticsearch() -> None:
     run(scenario())
 
 
-def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> None:
+def test_chat_endpoint_dispatches_command_to_worker(monkeypatch) -> None:
     async def scenario() -> None:
         conversation_id = uuid4()
         user_id = uuid4()
         session = AsyncMock()
-        orchestrator = AsyncMock()
-        orchestrator.run.return_value = SimpleNamespace(
-            output=SimpleNamespace(
-                answer="Here are the results", used_agents=["food_search"]
-            )
-        )
+
+        class FakeChatBroker:
+            def __init__(self) -> None:
+                self.command = None
+
+            async def publish(self, command) -> None:
+                self.command = command
+
+        chat_broker = FakeChatBroker()
         resources = SimpleNamespace(
             elasticsearch=AsyncMock(),
-            orchestrator=orchestrator,
+            chat_broker=chat_broker,
             retrieval_approach=None,
         )
 
@@ -64,20 +67,11 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
             async def get(self, _conversation_id):
                 return self.conversation
 
-        class FakeMessageRepository:
-            def __init__(self, _session):
-                self.calls = []
-
-            async def create(self, entity):
-                self.calls.append(entity)
-                return SimpleNamespace(id=uuid4())
-
         monkeypatch.setattr(
             endpoints,
             "ConversationRepository",
             FakeConversationRepository,
         )
-        monkeypatch.setattr(endpoints, "MessageRepository", FakeMessageRepository)
         monkeypatch.setattr(
             endpoints, "SessionFactory", lambda: _SessionContext(session)
         )
@@ -88,10 +82,13 @@ def test_chat_endpoint_runs_orchestrator_and_persists_messages(monkeypatch) -> N
             _request(resources),
         )
 
-        assert response.answer == "Here are the results"
-        assert response.used_agents == ["food_search"]
-        orchestrator.run.assert_awaited_once()
-        assert session.commit.await_count == 2
+        assert response.chat_id == conversation_id
+        assert response.status == "accepted"
+        assert response.execution_id is not None
+        assert chat_broker.command.chat_id == conversation_id
+        assert chat_broker.command.user_id == user_id
+        assert chat_broker.command.content == "Find apples"
+        session.commit.assert_not_awaited()
 
     run(scenario())
 
