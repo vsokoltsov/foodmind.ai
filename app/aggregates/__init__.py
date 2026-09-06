@@ -2,6 +2,12 @@
 
 from app.aggregates.branded_food import BrandedFood
 from app.aggregates.conversation import Conversation
+from app.aggregates.conversation_context import (
+    ContextMessage,
+    ContextSection,
+    ConversationContext,
+    MessageRole,
+)
 from app.aggregates.feedback import Feedback
 from app.aggregates.food_entity import FoodEntity
 from app.aggregates.foundation_food import FoundationFood
@@ -15,10 +21,14 @@ from app.aggregates.turn_execution import TurnExecution
 __all__ = [
     "BrandedFood",
     "Conversation",
+    "ContextMessage",
+    "ContextSection",
+    "ConversationContext",
     "Feedback",
     "FoodEntity",
     "FoundationFood",
     "Message",
+    "MessageRole",
     "ModelProvider",
     "ModelRole",
     "Nutrition",
