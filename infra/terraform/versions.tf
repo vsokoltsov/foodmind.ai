@@ -10,6 +10,14 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.0"
     }
+    ec = {
+      source  = "elastic/ec"
+      version = "~> 0.12"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 }
 
@@ -21,4 +29,8 @@ provider "google" {
 provider "github" {
   owner = var.github_owner
   token = var.github_token
+}
+
+provider "ec" {
+  apikey = var.elastic_cloud_api_key
 }

@@ -1,11 +1,30 @@
-project_id  = "your-gcp-project-id"
-bucket_name = "your-globally-unique-foodmind-artifacts"
-# Optional bucket for versioned LLM evaluation strategy artifacts.
-evaluation_bucket_name = "your-globally-unique-foodmind-evaluation"
-region      = "europe-west3"
+# Copy to terraform.tfvars (which is ignored) and fill the project-specific values.
+project_id             = "your-gcp-project"
+bucket_name            = "your-gcp-project-foodmind-ingestion"
+evaluation_bucket_name = "your-gcp-project-foodmind-evaluation"
 
-# GitHub Actions secret configuration. Keep the API key out of this file.
-github_owner      = "vsokoltsov"
-github_repository = "foodmind.ai"
-# Set TF_VAR_openai_api_key and TF_VAR_gemini_api_key through the environment;
-# do not commit either key or use empty strings, which would create empty secrets.
+# Lowest-cost Cloud SQL configuration, intended for development only.
+cloud_sql_edition = "ENTERPRISE"
+cloud_sql_tier    = "db-f1-micro"
+
+# A single 30 GB worker is sufficient for the temporary MVP deployment.
+gke_node_count        = 1
+gke_boot_disk_size_gb = 30
+gke_node_zones        = ["europe-west3-a"]
+
+# Elastic Cloud control-plane key used to provision the managed Elasticsearch cluster.
+elastic_cloud_api_key = "replace-me"
+# Use a non-deprecated ID returned for your region by list-elastic-templates.sh.
+elastic_cloud_deployment_template_id = "replace-with-current-template-id"
+
+# Cloud Run uses a verified custom domain. The API DNS A record and the UI CNAME
+# are created in this Cloud DNS zone.
+dns_managed_zone = "example-com"
+api_domain_name  = "api.example.com"
+api_public_url   = "https://api.example.com"
+ui_domain_name   = "food.example.com"
+ui_image         = "europe-west3-docker.pkg.dev/your-gcp-project/foodmind/ui:sha-..."
+
+# Keep sensitive values in a local tfvars file or inject them through TF_VAR_*.
+openai_api_key         = "replace-me"
+nicegui_storage_secret = "replace-with-a-long-random-value"

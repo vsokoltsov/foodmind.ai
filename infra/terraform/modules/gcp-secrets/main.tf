@@ -46,3 +46,19 @@ resource "google_secret_manager_secret_iam_member" "github_actions_gemini" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${var.github_actions_service_account_email}"
 }
+
+resource "google_secret_manager_secret" "nicegui_storage" {
+  count     = var.nicegui_storage_secret == null ? 0 : 1
+  project   = var.project_id
+  secret_id = "NICEGUI_STORAGE_SECRET"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "nicegui_storage" {
+  count       = var.nicegui_storage_secret == null ? 0 : 1
+  secret      = google_secret_manager_secret.nicegui_storage[0].id
+  secret_data = var.nicegui_storage_secret
+}

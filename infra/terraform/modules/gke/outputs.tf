@@ -1,0 +1,9 @@
+output "cluster_name" { value = google_container_cluster.foodmind.name }
+output "cluster_endpoint" { value = google_container_cluster.foodmind.endpoint }
+output "network_id" { value = google_compute_network.foodmind.id }
+output "workload_service_account_email" { value = google_service_account.workload.email }
+output "workload_service_account_name" { value = google_service_account.workload.name }
+output "artifact_repository" { value = google_artifact_registry_repository.foodmind.name }
+output "artifact_repository_url" { value = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.foodmind.repository_id}" }
+output "api_ip_address" { value = google_compute_global_address.api.address }
+output "api_public_ip" { value = google_compute_global_address.api.address }

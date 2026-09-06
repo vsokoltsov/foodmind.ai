@@ -1,3 +1,8 @@
+output "project_id" {
+  description = "Google Cloud project hosting FoodMind."
+  value       = var.project_id
+}
+
 output "artifact_bucket_name" {
   description = "Bucket name to set as GCS_BUCKET."
   value       = module.ingestion_artifacts.bucket_name
@@ -36,4 +41,62 @@ output "gemini_secret_name" {
 output "vertex_ai_api_service" {
   description = "Vertex AI API enabled for the project."
   value       = module.vertex_ai.api_service
+}
+
+output "gke_cluster_name" {
+  description = "GKE cluster to target with Helm."
+  value       = module.gke.cluster_name
+}
+
+output "artifact_registry_repository" {
+  description = "Artifact Registry repository URL for container images."
+  value       = module.gke.artifact_repository_url
+}
+
+output "gke_workload_service_account_email" {
+  description = "Google service account used through GKE Workload Identity."
+  value       = module.gke.workload_service_account_email
+}
+
+output "cloud_sql_connection_name" {
+  description = "Cloud SQL connection name consumed by the Cloud SQL Auth Proxy."
+  value       = module.cloud_sql.connection_name
+}
+
+output "cloud_sql_foodmind_password" {
+  description = "Password for the foodmind application database user."
+  value       = module.cloud_sql.foodmind_password
+  sensitive   = true
+}
+
+output "cloud_sql_kestra_password" {
+  description = "Password for the Kestra database user."
+  value       = module.cloud_sql.kestra_password
+  sensitive   = true
+}
+
+output "api_public_ip" {
+  description = "Static IP reserved for the GKE API ingress."
+  value       = module.gke.api_public_ip
+}
+
+output "elasticsearch_endpoint" {
+  description = "Managed Elastic Cloud HTTPS endpoint."
+  value       = module.elastic_cloud.elasticsearch_endpoint
+}
+
+output "elasticsearch_username" {
+  description = "Managed Elastic Cloud username."
+  value       = module.elastic_cloud.elasticsearch_username
+}
+
+output "elasticsearch_password" {
+  description = "Managed Elastic Cloud password."
+  value       = module.elastic_cloud.elasticsearch_password
+  sensitive   = true
+}
+
+output "cloud_run_ui_url" {
+  description = "Cloud Run UI service URL."
+  value       = try(module.cloud_run_ui[0].url, null)
 }

@@ -21,3 +21,10 @@ variable "github_actions_service_account_email" {
   description = "Service account allowed to read CI secrets."
   type        = string
 }
+
+variable "nicegui_storage_secret" {
+  description = "Secret used by NiceGUI to protect its signed browser storage."
+  type        = string
+  sensitive   = true
+  default     = null
+}

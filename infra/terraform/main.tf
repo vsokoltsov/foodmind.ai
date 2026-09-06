@@ -87,6 +87,7 @@ module "gcp_secrets" {
   project_id                           = var.project_id
   openai_api_key                       = var.openai_api_key
   gemini_api_key                       = var.gemini_api_key
+  nicegui_storage_secret               = var.nicegui_storage_secret
   github_actions_service_account_email = google_service_account.github_actions.email
 
   depends_on = [google_project_service.secret_manager]
@@ -108,6 +109,115 @@ resource "google_service_account" "ingestion" {
   project      = var.project_id
 }
 
+module "gke" {
+  source = "./modules/gke"
+
+  project_id             = var.project_id
+  region                 = var.region
+  name                   = var.gke_cluster_name
+  artifact_repository_id = var.artifact_repository_id
+  node_count             = var.gke_node_count
+  machine_type           = var.gke_machine_type
+  boot_disk_size_gb      = var.gke_boot_disk_size_gb
+  node_zones             = var.gke_node_zones
+  deletion_protection    = var.gke_deletion_protection
+  subnet_cidr            = var.gke_subnet_cidr
+  pods_cidr              = var.gke_pods_cidr
+  services_cidr          = var.gke_services_cidr
+}
+
+module "cloud_sql" {
+  source = "./modules/cloud-sql"
+
+  project_id          = var.project_id
+  region              = var.region
+  name                = var.cloud_sql_instance_name
+  network_id          = module.gke.network_id
+  edition             = var.cloud_sql_edition
+  tier                = var.cloud_sql_tier
+  availability_type   = var.cloud_sql_availability_type
+  deletion_protection = var.cloud_sql_deletion_protection
+}
+
+module "elastic_cloud" {
+  source = "./modules/elastic-cloud"
+
+  name                   = "${var.gke_cluster_name}-elasticsearch"
+  region                 = var.elastic_cloud_region
+  elastic_stack_version  = var.elastic_cloud_version
+  deployment_template_id = var.elastic_cloud_deployment_template_id
+}
+
+module "cloud_run_ui" {
+  count  = var.ui_image == null || var.nicegui_storage_secret == null ? 0 : 1
+  source = "./modules/cloud-run-ui"
+
+  project_id        = var.project_id
+  region            = var.region
+  name              = var.gke_cluster_name
+  image             = var.ui_image
+  api_url           = var.api_public_url
+  nicegui_secret_id = module.gcp_secrets.nicegui_storage_secret_name
+  public_access     = var.ui_public_access
+  dns_managed_zone  = var.dns_managed_zone
+  domain_name       = var.ui_domain_name
+}
+
+resource "google_project_iam_member" "gke_workload_vertex_ai" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${module.gke.workload_service_account_email}"
+}
+
+resource "google_service_account_iam_member" "gke_workload_identity" {
+  service_account_id = module.gke.workload_service_account_name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.gke_namespace}/foodmind]"
+
+  # The identity pool exists only after GKE enables Workload Identity on the cluster.
+  depends_on = [module.gke]
+}
+
+resource "google_storage_bucket_iam_member" "gke_ingestion_artifact_writer" {
+  bucket = module.ingestion_artifacts.bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${module.gke.workload_service_account_email}"
+}
+
+resource "google_project_iam_member" "gke_workload_cloud_sql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${module.gke.workload_service_account_email}"
+}
+
+resource "google_project_iam_member" "github_actions_artifact_registry" {
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_project_iam_member" "github_actions_gke" {
+  project = var.project_id
+  role    = "roles/container.developer"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_service_account_iam_member" "github_actions_gke_workload" {
+  service_account_id = module.gke.workload_service_account_name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_dns_record_set" "api" {
+  count        = var.dns_managed_zone == null || var.api_domain_name == null ? 0 : 1
+  project      = var.project_id
+  managed_zone = var.dns_managed_zone
+  name         = "${var.api_domain_name}."
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [module.gke.api_public_ip]
+}
+
 module "vertex_ai" {
   source = "./modules/vertex-ai"
 
@@ -115,5 +225,6 @@ module "vertex_ai" {
   service_account_emails = [
     google_service_account.ingestion.email,
     google_service_account.github_actions.email,
+    module.gke.workload_service_account_email,
   ]
 }

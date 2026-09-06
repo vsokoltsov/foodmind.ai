@@ -1,0 +1,12 @@
+variable "project_id" { type = string }
+variable "region" { type = string }
+variable "name" { type = string }
+variable "artifact_repository_id" { type = string }
+variable "subnet_cidr" { type = string }
+variable "pods_cidr" { type = string }
+variable "services_cidr" { type = string }
+variable "node_count" { type = number }
+variable "machine_type" { type = string }
+variable "boot_disk_size_gb" { type = number }
+variable "node_zones" { type = list(string) }
+variable "deletion_protection" { type = bool }
