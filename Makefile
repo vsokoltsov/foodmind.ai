@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test-unit test-integration evaluation evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor grafana-dashboards test
+.PHONY: lint typecheck test-unit test-integration evaluation evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor grafana-dashboards populate-dashboard test
 
 lint:
 	uv run ruff check app tests
@@ -40,6 +40,9 @@ evaluation: evaluation-retrieval evaluation-food-search evaluation-nutrition-ana
 
 grafana-dashboards:
 	jsonnet infra/grafana/dashboards/foodmind-overview.jsonnet > infra/grafana/dashboards/generated/foodmind-overview.json
+
+populate-dashboard:
+	uv run python cmd/populate_dashboard.py
 
 test:
 	$(MAKE) test-unit test-integration
