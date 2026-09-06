@@ -6,6 +6,7 @@ from app.aggregates.feedback import Feedback
 from app.aggregates.food_entity import FoodEntity
 from app.aggregates.foundation_food import FoundationFood
 from app.aggregates.message import Message
+from app.aggregates.model_configuration import ModelProvider, ModelRole
 from app.aggregates.nutrition import Nutrition
 from app.aggregates.openfoodfacts_product import OpenFoodFactsProduct
 from app.aggregates.related_entity import RelatedEntity
@@ -18,6 +19,8 @@ __all__ = [
     "FoodEntity",
     "FoundationFood",
     "Message",
+    "ModelProvider",
+    "ModelRole",
     "Nutrition",
     "OpenFoodFactsProduct",
     "RelatedEntity",

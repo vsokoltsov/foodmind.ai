@@ -9,10 +9,10 @@ from typing import Any, Awaitable, Callable, TypeVar, cast
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoodEntity, FoundationFood, OpenFoodFactsProduct
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.repositories.openfoodfacts import OpenFoodFactsRepository
 from app.repositories.queries import (
     BrandedFoodQuery,
@@ -271,18 +271,14 @@ class FoodSearchAgent:
             "results, provide the final answer immediately."
         )
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.AGENT)
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
             output_type=FoodSearchAnswer,
             instructions=f"{shared_instructions} {self.instructions or ''}".strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
         self.agent.tool(self.search_foods)
         self.agent.tool(self.lookup_wikidata_entity)
@@ -300,7 +296,7 @@ class FoodSearchAgent:
             Typed agent response containing a summary and search results.
         """
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.AGENT)
         with tracing.span(
             "foodmind.llm.agent", {"foodmind.agent": "food_search"}
         ) as span:

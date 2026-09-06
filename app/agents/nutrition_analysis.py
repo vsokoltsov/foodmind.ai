@@ -6,11 +6,11 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoundationFood, Nutrition
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.observability import metrics
 from app.observability.tracing import tracing
 from app.repositories.queries import BrandedFoodQuery, USDAFoodQuery
@@ -75,12 +75,8 @@ class NutritionAnalysisAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.AGENT)
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -92,7 +88,7 @@ class NutritionAnalysisAgent:
                 "missing. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
         self.agent.tool(self.analyze_nutrition)
 
@@ -105,7 +101,7 @@ class NutritionAnalysisAgent:
     ) -> AgentRunResult[NutritionAnalysisAnswer]:
         """Run the nutrition agent with request-scoped repositories."""
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.AGENT)
         with tracing.span(
             "foodmind.llm.agent", {"foodmind.agent": "nutrition_analysis"}
         ) as span:

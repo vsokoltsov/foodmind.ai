@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.evaluation.orchestrator import (
     OrchestratorApproach,
     OrchestratorEvaluationRunner,
@@ -30,7 +32,9 @@ def test_orchestrator_llm_evaluation(evaluation_catalog: str) -> None:
         try:
             runner = OrchestratorEvaluationRunner(
                 repositories=FoodSearchDependencies.from_client(client),
-                judge=OrchestratorJudge(model=get_settings().OPENAI_MODEL),
+                judge=OrchestratorJudge(
+                    model=ModelFactory(get_settings()).build(ModelRole.EVALUATION_JUDGE)
+                ),
             )
             return await runner.run(
                 load_dataset(Path(__file__).parent / "orchestrator_dataset.json"),

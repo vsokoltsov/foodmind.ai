@@ -12,6 +12,8 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from app.aggregates.model_configuration import ModelProvider
+
 
 class UsageLimitsSettings(BaseModel):
     """Request and tool-call limits for one PydanticAI execution."""
@@ -23,7 +25,7 @@ class UsageLimitsSettings(BaseModel):
 class ModelSettings(BaseModel):
     """Configuration for one model role."""
 
-    provider: Literal["openai", "vertex"]
+    provider: ModelProvider
     model: str
     timeout_seconds: float | None = None
     max_output_tokens: int | None = None
@@ -57,6 +59,7 @@ class Settings(BaseSettings):
     ELASTICSEARCH_URL: str = "http://localhost:9200"
     DATABASE_URL: str = "postgresql+psycopg://foodmind:foodmind@localhost:5432/foodmind"
     OPENAI_API_KEY: str | None = None
+    GEMINI_API_KEY: str | None = None
     OPENAI_MODEL: str = "openai:gpt-5-mini"
     OPENAI_PLANNER_MODEL: str | None = None
     OPENAI_QUERY_REWRITER_MODEL: str | None = None

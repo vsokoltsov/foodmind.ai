@@ -5,9 +5,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent, AgentRunResult
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
-
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.settings import get_settings
 from app.observability import metrics
 from app.observability.tracing import tracing
@@ -86,12 +85,8 @@ class FoodMindPlanner:
     def __post_init__(self) -> None:
         """Create the structured-output planning agent."""
         settings = get_settings()
-        model = settings.OPENAI_PLANNER_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.PLANNER)
         self.agent = Agent(
             model,
             output_type=ExecutionPlan,
@@ -104,13 +99,13 @@ class FoodMindPlanner:
                 "user; return only an execution plan. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
 
     async def plan(self, prompt: str) -> AgentRunResult[ExecutionPlan]:
         """Create a typed execution plan for a user request."""
         settings = get_settings()
-        model = settings.OPENAI_PLANNER_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.PLANNER)
         with tracing.span("foodmind.llm.planner") as span:
             try:
                 result = await self.agent.run(prompt)

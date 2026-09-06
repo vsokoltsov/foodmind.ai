@@ -14,6 +14,8 @@ from app.evaluation.food_search import (
     summarize_results,
 )
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.evaluation.food_search import FoodSearchEvaluationRunner, load_dataset
 from app.evaluation.artifacts import EvaluationArtifactRepository
 from app.settings import get_settings
@@ -78,7 +80,9 @@ def test_food_search_llm_evaluation(evaluation_catalog: str) -> None:
             dependencies = FoodSearchDependencies.from_client(client)
             runner = FoodSearchEvaluationRunner(
                 dependencies=dependencies,
-                judge=FoodSearchJudge(model=get_settings().OPENAI_MODEL),
+                judge=FoodSearchJudge(
+                    model=ModelFactory(get_settings()).build(ModelRole.EVALUATION_JUDGE)
+                ),
             )
             return await runner.run(
                 load_dataset(

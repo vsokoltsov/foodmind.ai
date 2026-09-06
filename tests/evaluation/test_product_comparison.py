@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.evaluation.product_comparison import (
     ProductComparisonApproach,
     ProductComparisonEvaluationRunner,
@@ -30,7 +32,9 @@ def test_product_comparison_llm_evaluation(evaluation_catalog: str) -> None:
         try:
             runner = ProductComparisonEvaluationRunner(
                 dependencies=FoodSearchDependencies.from_client(client),
-                judge=ProductComparisonJudge(model=get_settings().OPENAI_MODEL),
+                judge=ProductComparisonJudge(
+                    model=ModelFactory(get_settings()).build(ModelRole.EVALUATION_JUDGE)
+                ),
             )
             return await runner.run(
                 load_dataset(Path(__file__).parent / "product_comparison_dataset.json"),

@@ -12,6 +12,8 @@ from app.evaluation.planner import (
     load_dataset,
     summarize_results,
 )
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.settings import get_settings
 from app.evaluation.artifacts import EvaluationArtifactRepository
 
@@ -24,7 +26,9 @@ def test_planner_llm_evaluation() -> None:
 
     async def evaluate() -> object:
         runner = PlannerEvaluationRunner(
-            judge=PlannerJudge(model=get_settings().OPENAI_MODEL)
+            judge=PlannerJudge(
+                model=ModelFactory(get_settings()).build(ModelRole.EVALUATION_JUDGE)
+            )
         )
         return await runner.run(
             load_dataset(Path(__file__).parent / "planner_dataset.json"),

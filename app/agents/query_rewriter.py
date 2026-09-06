@@ -7,9 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
-
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.observability import metrics
 from app.observability.tracing import tracing
 from app.settings import get_settings
@@ -45,16 +44,8 @@ class QueryRewriter:
     def __post_init__(self) -> None:
         """Create the structured-output rewriting agent."""
         settings = get_settings()
-        model = (
-            settings.OPENAI_QUERY_REWRITER_MODEL
-            or settings.OPENAI_PLANNER_MODEL
-            or settings.OPENAI_MODEL
-        )
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.QUERY_REWRITER)
         self.agent = Agent(
             model,
             output_type=RewrittenQuery,
@@ -66,7 +57,7 @@ class QueryRewriter:
                 "Do not answer the request, add facts, or drop constraints. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
 
     async def rewrite(self, query: str) -> QueryRewrite:
@@ -80,16 +71,13 @@ class QueryRewriter:
         """
         normalized = self._normalize(query)
         settings = get_settings()
-        if not settings.OPENAI_API_KEY:
+        factory = ModelFactory(settings)
+        if not factory.provider_is_configured(ModelRole.QUERY_REWRITER):
             return QueryRewrite(
                 query=normalized, method=QueryRewriteMethod.DETERMINISTIC
             )
 
-        model = (
-            settings.OPENAI_QUERY_REWRITER_MODEL
-            or settings.OPENAI_PLANNER_MODEL
-            or settings.OPENAI_MODEL
-        )
+        model = factory.name_for(ModelRole.QUERY_REWRITER)
         with tracing.span("foodmind.query_rewriter") as span:
             try:
                 result = await asyncio.wait_for(

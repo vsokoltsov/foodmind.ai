@@ -8,9 +8,6 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, UsageLimits
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
-
 from app.agents.food_recommendation import (
     FoodRecommendationAgent,
     FoodRecommendationAnswer,
@@ -30,6 +27,8 @@ from app.agents.product_comparison import (
     ProductComparisonAnswer,
 )
 from app.agents.query_rewriter import QueryRewriter
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.agents.planner import AgentName, ExecutionPlan, FoodMindPlanner
 from app.agents.router import FoodMindRouter, RouteKind
 from app.observability import metrics
@@ -145,12 +144,8 @@ class FoodMindOrchestrator:
         self.executor = PlanExecutor(
             task_timeout_seconds=settings.AGENT_TIMEOUT_SECONDS
         )
-        model = settings.OPENAI_SYNTHESIS_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.SYNTHESIS)
         self.synthesizer = Agent(
             model,
             output_type=OrchestratorAnswer,
@@ -161,7 +156,7 @@ class FoodMindOrchestrator:
                 "that supplied evidence. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
 
     async def create_plan(self, prompt: str) -> AgentRunResult[ExecutionPlan]:
@@ -395,7 +390,7 @@ class FoodMindOrchestrator:
         ]
         started = perf_counter()
         settings = get_settings()
-        model = settings.OPENAI_SYNTHESIS_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.SYNTHESIS)
         with tracing.span("foodmind.orchestrator.synthesis") as span:
             try:
                 result = await asyncio.wait_for(

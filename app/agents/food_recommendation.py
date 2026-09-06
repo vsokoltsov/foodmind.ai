@@ -5,11 +5,11 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext, UsageLimits
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoodEntity, FoundationFood, OpenFoodFactsProduct
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.observability import metrics
 from app.observability.tracing import tracing
 from app.repositories.queries import BrandedFoodQuery, OpenFoodFactsQuery, USDAFoodQuery, WikidataFoodQuery
@@ -65,12 +65,8 @@ class FoodRecommendationAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.AGENT)
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -83,7 +79,7 @@ class FoodRecommendationAgent:
                 "returned evidence and explain any unmet constraint. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
         self.agent.tool(self.recommend_foods)
 
@@ -101,7 +97,7 @@ class FoodRecommendationAgent:
         or wider limit for a particular workflow.
         """
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.AGENT)
         limits = usage_limits or UsageLimits(request_limit=12, tool_calls_limit=4)
         with tracing.span(
             "foodmind.llm.agent", {"foodmind.agent": "food_recommendation"}

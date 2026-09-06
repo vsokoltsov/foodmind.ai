@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.evaluation.food_recommendation import (
     FoodRecommendationEvaluationRunner,
     FoodRecommendationJudge,
@@ -30,7 +32,9 @@ def test_food_recommendation_llm_evaluation(evaluation_catalog: str) -> None:
         try:
             runner = FoodRecommendationEvaluationRunner(
                 dependencies=FoodSearchDependencies.from_client(client),
-                judge=FoodRecommendationJudge(model=get_settings().OPENAI_MODEL),
+                judge=FoodRecommendationJudge(
+                    model=ModelFactory(get_settings()).build(ModelRole.EVALUATION_JUDGE)
+                ),
             )
             return await runner.run(
                 load_dataset(Path(__file__).parent / "food_recommendation_dataset.json"),

@@ -8,6 +8,7 @@ from app.agents.query_rewriter import (
     QueryRewriter,
     RewrittenQuery,
 )
+from app.settings import ModelSettings
 from tests.repositories.conftest import run
 
 
@@ -21,6 +22,9 @@ def test_query_rewriter_uses_deterministic_normalization_without_an_api_key(
         OPENAI_PLANNER_MODEL=None,
         OPENAI_QUERY_REWRITER_MODEL=None,
         QUERY_REWRITE_TIMEOUT_SECONDS=1.0,
+        models=SimpleNamespace(
+            query_rewriter=ModelSettings(provider="openai", model="test-model")
+        ),
     )
     monkeypatch.setattr("app.agents.query_rewriter.get_settings", lambda: settings)
 
@@ -41,6 +45,9 @@ def test_query_rewriter_uses_structured_model_output(monkeypatch) -> None:
         OPENAI_PLANNER_MODEL=None,
         OPENAI_QUERY_REWRITER_MODEL="openai:rewrite-model",
         QUERY_REWRITE_TIMEOUT_SECONDS=1.0,
+        models=SimpleNamespace(
+            query_rewriter=ModelSettings(provider="openai", model="rewrite-model")
+        ),
     )
     monkeypatch.setattr("app.agents.query_rewriter.get_settings", lambda: settings)
 

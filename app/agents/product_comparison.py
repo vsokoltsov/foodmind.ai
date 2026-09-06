@@ -5,10 +5,10 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, AgentRunResult, RunContext
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.agents.food_search import FoodSearchDependencies
+from app.aggregates.model_configuration import ModelRole
+from app.agents.model_factory import ModelFactory
 from app.aggregates import BrandedFood, OpenFoodFactsProduct
 from app.observability import metrics
 from app.observability.tracing import tracing
@@ -75,12 +75,8 @@ class ProductComparisonAgent:
     def __post_init__(self) -> None:
         """Create the configured PydanticAI agent and register its tool."""
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
-        if settings.OPENAI_API_KEY:
-            model = OpenAIChatModel(
-                model_name=model.removeprefix("openai:"),
-                provider=OpenAIProvider(api_key=settings.OPENAI_API_KEY),
-            )
+        factory = ModelFactory(settings)
+        model = factory.build(ModelRole.AGENT)
         self.agent = Agent(
             model,
             deps_type=FoodSearchDependencies,
@@ -91,7 +87,7 @@ class ProductComparisonAgent:
                 "ingredient and allergen differences, and explain rankings. "
                 f"{self.instructions or ''}"
             ).strip(),
-            defer_model_check=not bool(settings.OPENAI_API_KEY),
+            defer_model_check=factory.defer_model_check(),
         )
         self.agent.tool(self.compare_products)
 
@@ -100,7 +96,7 @@ class ProductComparisonAgent:
     ) -> AgentRunResult[ProductComparisonAnswer]:
         """Run the comparison agent with request-scoped repositories."""
         settings = get_settings()
-        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        model = ModelFactory(settings).name_for(ModelRole.AGENT)
         with tracing.span(
             "foodmind.llm.agent", {"foodmind.agent": "product_comparison"}
         ) as span:
