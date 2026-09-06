@@ -28,8 +28,13 @@ class Tracing:
         self._configured = False
         self._provider: TracerProvider | None = None
 
-    def configure(self, app: FastAPI) -> None:
-        """Configure one process-wide OpenTelemetry provider and instrumentors."""
+    def configure(self, app: FastAPI | None = None) -> None:
+        """Configure one process-wide OpenTelemetry provider and instrumentors.
+
+        Args:
+            app: Optional FastAPI application to instrument. Background workers
+                configure tracing without an HTTP application.
+        """
         settings = get_settings()
         if self._configured or not settings.OTEL_ENABLED:
             return
@@ -42,15 +47,14 @@ class Tracing:
         )
         provider = TracerProvider(resource=resource)
         exporter = OTLPSpanExporter(
-            endpoint=(
-                f"{settings.OTEL_EXPORTER_OTLP_ENDPOINT.rstrip('/')}/v1/traces"
-            ),
+            endpoint=(f"{settings.OTEL_EXPORTER_OTLP_ENDPOINT.rstrip('/')}/v1/traces"),
             timeout=settings.OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS,
         )
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
 
-        FastAPIInstrumentor.instrument_app(app, excluded_urls="health,metrics")
+        if app is not None:
+            FastAPIInstrumentor.instrument_app(app, excluded_urls="health,metrics")
         HTTPXClientInstrumentor().instrument()
         SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
 
