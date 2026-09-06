@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+  labels:
+    {{- include "foodmind.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "foodmind.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+  ports:
+    - {name: client, port: 4222}
+    - {name: monitor, port: 8222}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nats-ui-context
+data:
+  foodmind.json: |
+    {"description":"FoodMind GKE JetStream","url":"nats://nats:4222"}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nats
+  labels:
+    {{- include "foodmind.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  serviceName: nats
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "foodmind.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- include "foodmind.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      containers:
+        - name: nats
+          image: {{ .Values.images.nats | quote }}
+          args: ["-js", "-sd", "/data", "-m", "8222"]
+          ports: [{name: client, containerPort: 4222}, {name: monitor, containerPort: 8222}]
+          volumeMounts: [{name: data, mountPath: /data}]
+          readinessProbe: {httpGet: {path: /healthz, port: monitor}}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ .Values.storage.className | quote }}
+        resources: {requests: {storage: {{ .Values.storage.natsSize | quote }}}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats-ui
+  labels:
+    {{- include "foodmind.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "foodmind.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats-ui
+  ports: [{name: http, port: 31311, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "foodmind.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats-ui
+  template:
+    metadata:
+      labels:
+        {{- include "foodmind.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nats-ui
+    spec:
+      containers:
+        - name: nats-ui
+          image: {{ .Values.images.natsUi | quote }}
+          ports: [{name: http, containerPort: 31311}]
+          args: ["--nats-cli-contexts=/nats-contexts"]
+          volumeMounts: [{name: contexts, mountPath: /nats-contexts, readOnly: true}]
+      volumes: [{name: contexts, configMap: {name: nats-ui-context}}]

@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrations
+  labels:
+    {{- include "foodmind.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: foodmind
+      containers:
+        - name: migrations
+          image: {{ required "images.api is required" .Values.images.api | quote }}
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
+        - name: cloud-sql-proxy
+          image: {{ .Values.images.cloudSqlProxy | quote }}
+          args: ["--address=0.0.0.0", "--port=5432", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
+          securityContext: {runAsNonRoot: true}

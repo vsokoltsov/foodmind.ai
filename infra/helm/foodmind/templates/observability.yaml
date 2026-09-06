@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: foodmind-api
+        metrics_path: /metrics
+        static_configs: [{targets: ["api:8000"]}]
+      - job_name: foodmind-chat-worker
+        static_configs: [{targets: ["chat-worker:9100"]}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: prometheus}
+spec:
+  selector: {app.kubernetes.io/component: prometheus}
+  ports: [{name: http, port: 9090}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: prometheus}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/component: prometheus}}
+  template:
+    metadata: {labels: {app.kubernetes.io/component: prometheus}}
+    spec:
+      containers:
+        - name: prometheus
+          image: {{ .Values.images.prometheus | quote }}
+          args: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+          ports: [{name: http, containerPort: 9090}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/prometheus}
+            - {name: data, mountPath: /prometheus}
+      volumes:
+        - {name: config, configMap: {name: prometheus-config}}
+        - {name: data, persistentVolumeClaim: {claimName: prometheus-data}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: prometheus-data}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources: {requests: {storage: {{ .Values.storage.prometheusSize | quote }}}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: tempo-config}
+data:
+  tempo.yml: |
+    stream_over_http_enabled: true
+    server: {http_listen_port: 3200}
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            http: {endpoint: 0.0.0.0:4318}
+    storage:
+      trace:
+        backend: local
+        wal: {path: /var/tempo/wal}
+        local: {path: /var/tempo/blocks}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: tempo}
+spec:
+  selector: {app.kubernetes.io/component: tempo}
+  ports: [{name: http, port: 3200}, {name: otlp-http, port: 4318}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: tempo}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/component: tempo}}
+  template:
+    metadata: {labels: {app.kubernetes.io/component: tempo}}
+    spec:
+      containers:
+        - name: tempo
+          image: {{ .Values.images.tempo | quote }}
+          args: ["-config.file=/etc/tempo/tempo.yml"]
+          ports: [{name: http, containerPort: 3200}, {name: otlp-http, containerPort: 4318}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/tempo}
+            - {name: data, mountPath: /var/tempo}
+      volumes:
+        - {name: config, configMap: {name: tempo-config}}
+        - {name: data, persistentVolumeClaim: {claimName: tempo-data}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: tempo-data}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources: {requests: {storage: {{ .Values.storage.tempoSize | quote }}}}

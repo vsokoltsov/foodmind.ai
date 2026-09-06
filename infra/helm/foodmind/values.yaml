@@ -1,0 +1,38 @@
+images:
+  api: ""
+  kestra: ""
+  nats: nats:2.11-alpine
+  natsUi: ghcr.io/nats-nui/nui:latest
+  grafana: grafana/grafana:12.0.2
+  prometheus: prom/prometheus:v3.4.1
+  tempo: grafana/tempo:2.8.2
+  cloudSqlProxy: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0
+
+runtimeSecretName: foodmind-runtime
+gcpServiceAccount: ""
+cloudSql:
+  instanceConnectionName: ""
+
+api:
+  replicas: 2
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1", memory: 1Gi}
+worker:
+  replicas: 1
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 2Gi}
+
+public:
+  apiHost: ""
+  staticIpName: foodmind-api-ip
+  managedCertificateName: foodmind-api-certificate
+
+storage:
+  className: standard-rwo
+  natsSize: 10Gi
+  kestraSize: 20Gi
+  grafanaSize: 5Gi
+  prometheusSize: 20Gi
+  tempoSize: 20Gi

@@ -1,0 +1,26 @@
+{{- if .Values.public.apiHost }}
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: {{ .Values.public.managedCertificateName }}
+spec:
+  domains: [{{ .Values.public.apiHost | quote }}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  annotations:
+    kubernetes.io/ingress.class: gce
+    kubernetes.io/ingress.global-static-ip-name: {{ .Values.public.staticIpName | quote }}
+    networking.gke.io/managed-certificates: {{ .Values.public.managedCertificateName | quote }}
+spec:
+  rules:
+    - host: {{ .Values.public.apiHost | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: api, port: {number: 8000}}
+{{- end }}
