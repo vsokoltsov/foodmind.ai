@@ -48,13 +48,22 @@ jobs:
     # Secret Manager access is intentionally unavailable to forked pull requests.
     if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    # Model identifiers are configuration, not credentials. Keep the expensive
-    # tool-using work on GPT-5 Mini and use GPT-4.1 Mini for planning/synthesis.
+    # Model roles are configured through the typed nested settings fields. The
+    # checked-in app/models.yaml contains the same defaults; these values make
+    # the CI selection explicit and reproducible.
     env:
-      OPENAI_PLANNER_MODEL: openai:gpt-4.1-mini
-      OPENAI_QUERY_REWRITER_MODEL: openai:gpt-5-nano
-      OPENAI_AGENT_MODEL: openai:gpt-5-mini
-      OPENAI_SYNTHESIS_MODEL: openai:gpt-4.1-mini
+      MODELS__QUERY_REWRITER__PROVIDER: vertex
+      MODELS__QUERY_REWRITER__MODEL: gemini-2.5-flash-lite
+      MODELS__PLANNER__PROVIDER: vertex
+      MODELS__PLANNER__MODEL: gemini-2.5-flash
+      MODELS__AGENT__PROVIDER: openai
+      MODELS__AGENT__MODEL: gpt-4.1-mini
+      MODELS__SYNTHESIS__PROVIDER: vertex
+      MODELS__SYNTHESIS__MODEL: gemini-2.5-flash-lite
+      MODELS__EVALUATION_JUDGE__PROVIDER: openai
+      MODELS__EVALUATION_JUDGE__MODEL: gpt-5.0-mini
+      MODELS__EMBEDDINGS__PROVIDER: vertex
+      MODELS__EMBEDDINGS__MODEL: gemini-embedding-001
     strategy:
       fail-fast: false
       matrix:
