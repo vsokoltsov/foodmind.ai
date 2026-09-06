@@ -1,4 +1,4 @@
-.PHONY: lint typecheck test-unit test-integration evaluation evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor test
+.PHONY: lint typecheck test-unit test-integration evaluation evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor grafana-dashboards test
 
 lint:
 	uv run ruff check app tests
@@ -37,6 +37,9 @@ evaluation-executor:
 	uv run pytest -m evaluation tests/evaluation/test_executor.py -q
 
 evaluation: evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor
+
+grafana-dashboards:
+	jsonnet infra/grafana/dashboards/foodmind-overview.jsonnet > infra/grafana/dashboards/generated/foodmind-overview.json
 
 test:
 	$(MAKE) test-unit test-integration

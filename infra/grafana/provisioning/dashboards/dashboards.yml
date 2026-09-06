@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: FoodMind
+    orgId: 1
+    folder: FoodMind
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
