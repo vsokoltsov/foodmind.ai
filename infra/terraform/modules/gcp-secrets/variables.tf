@@ -28,3 +28,21 @@ variable "nicegui_storage_secret" {
   sensitive   = true
   default     = null
 }
+
+variable "foodmind_database_password" {
+  description = "Password for the FoodMind application database user."
+  type        = string
+  sensitive   = true
+}
+
+variable "kestra_database_password" {
+  description = "Password for the Kestra database user."
+  type        = string
+  sensitive   = true
+}
+
+variable "elasticsearch_password" {
+  description = "Password for the managed Elasticsearch deployment."
+  type        = string
+  sensitive   = true
+}

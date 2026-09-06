@@ -12,3 +12,18 @@ output "nicegui_storage_secret_name" {
   description = "Secret Manager secret containing NICEGUI_STORAGE_SECRET."
   value       = try(google_secret_manager_secret.nicegui_storage[0].secret_id, null)
 }
+
+output "foodmind_database_password_secret_name" {
+  description = "Secret Manager secret containing the FoodMind database password."
+  value       = google_secret_manager_secret.foodmind_database_password.secret_id
+}
+
+output "kestra_database_password_secret_name" {
+  description = "Secret Manager secret containing the Kestra database password."
+  value       = google_secret_manager_secret.kestra_database_password.secret_id
+}
+
+output "elasticsearch_password_secret_name" {
+  description = "Secret Manager secret containing the Elasticsearch password."
+  value       = google_secret_manager_secret.elasticsearch_password.secret_id
+}

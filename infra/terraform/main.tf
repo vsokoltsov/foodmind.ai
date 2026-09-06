@@ -88,6 +88,9 @@ module "gcp_secrets" {
   openai_api_key                       = var.openai_api_key
   gemini_api_key                       = var.gemini_api_key
   nicegui_storage_secret               = var.nicegui_storage_secret
+  foodmind_database_password           = module.cloud_sql.foodmind_password
+  kestra_database_password             = module.cloud_sql.kestra_password
+  elasticsearch_password               = module.elastic_cloud.elasticsearch_password
   github_actions_service_account_email = google_service_account.github_actions.email
 
   depends_on = [google_project_service.secret_manager]
@@ -96,11 +99,21 @@ module "gcp_secrets" {
 module "github_actions_config" {
   source = "./modules/github-actions-config"
 
-  repository                 = var.github_repository
-  gcp_project_id             = var.project_id
-  workload_identity_provider = google_iam_workload_identity_pool_provider.github_actions.name
-  gcp_service_account_email  = google_service_account.github_actions.email
-  evaluation_bucket_name     = coalesce(var.evaluation_bucket_name, "${var.bucket_name}-evaluation")
+  repository                   = var.github_repository
+  gcp_project_id               = var.project_id
+  workload_identity_provider   = google_iam_workload_identity_pool_provider.github_actions.name
+  gcp_service_account_email    = google_service_account.github_actions.email
+  evaluation_bucket_name       = coalesce(var.evaluation_bucket_name, "${var.bucket_name}-evaluation")
+  region                       = var.region
+  gke_cluster_name             = module.gke.cluster_name
+  gke_namespace                = var.gke_namespace
+  artifact_registry_repository = module.gke.artifact_repository_url
+  cloud_sql_connection_name    = module.cloud_sql.connection_name
+  gcp_workload_service_account = module.gke.workload_service_account_email
+  gcs_bucket_name              = module.ingestion_artifacts.bucket_name
+  elasticsearch_endpoint       = module.elastic_cloud.elasticsearch_endpoint
+  elasticsearch_username       = module.elastic_cloud.elasticsearch_username
+  api_domain_name              = var.api_domain_name
 }
 
 resource "google_service_account" "ingestion" {

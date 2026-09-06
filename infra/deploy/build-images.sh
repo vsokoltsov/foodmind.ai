@@ -5,7 +5,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 terraform_directory="${project_root}/infra/terraform"
 image_tag="${IMAGE_TAG:?Set IMAGE_TAG (for example, a Git commit SHA).}"
-repository="$(terraform -chdir="${terraform_directory}" output -raw artifact_registry_repository)"
+repository="${ARTIFACT_REGISTRY_REPOSITORY:-$(terraform -chdir="${terraform_directory}" output -raw artifact_registry_repository)}"
 region="${GCP_REGION:-europe-west3}"
 
 gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet

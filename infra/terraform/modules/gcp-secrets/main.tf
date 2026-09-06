@@ -62,3 +62,58 @@ resource "google_secret_manager_secret_version" "nicegui_storage" {
   secret      = google_secret_manager_secret.nicegui_storage[0].id
   secret_data = var.nicegui_storage_secret
 }
+
+resource "google_secret_manager_secret" "foodmind_database_password" {
+  project   = var.project_id
+  secret_id = "FOODMIND_DATABASE_PASSWORD"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "foodmind_database_password" {
+  secret      = google_secret_manager_secret.foodmind_database_password.id
+  secret_data = var.foodmind_database_password
+}
+
+resource "google_secret_manager_secret" "kestra_database_password" {
+  project   = var.project_id
+  secret_id = "KESTRA_DATABASE_PASSWORD"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "kestra_database_password" {
+  secret      = google_secret_manager_secret.kestra_database_password.id
+  secret_data = var.kestra_database_password
+}
+
+resource "google_secret_manager_secret" "elasticsearch_password" {
+  project   = var.project_id
+  secret_id = "ELASTICSEARCH_PASSWORD"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "elasticsearch_password" {
+  secret      = google_secret_manager_secret.elasticsearch_password.id
+  secret_data = var.elasticsearch_password
+}
+
+resource "google_secret_manager_secret_iam_member" "github_actions_runtime" {
+  for_each = {
+    FOODMIND_DATABASE_PASSWORD = google_secret_manager_secret.foodmind_database_password.secret_id
+    KESTRA_DATABASE_PASSWORD   = google_secret_manager_secret.kestra_database_password.secret_id
+    ELASTICSEARCH_PASSWORD     = google_secret_manager_secret.elasticsearch_password.secret_id
+  }
+
+  project   = var.project_id
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.github_actions_service_account_email}"
+}
