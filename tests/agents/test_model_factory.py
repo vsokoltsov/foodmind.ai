@@ -1,10 +1,9 @@
 """Tests for provider-aware model construction."""
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
-from pydantic_ai.models.google import GoogleModel
-
 from app.aggregates.model_configuration import ModelRole
 from app.agents.model_factory import ModelFactory
 from app.settings import ModelSettings
@@ -40,9 +39,11 @@ def test_vertex_model_uses_google_cloud_provider() -> None:
     settings = _settings("vertex", "gemini-2.5-flash")
 
     factory = ModelFactory(settings)
-    model = factory.build(ModelRole.PLANNER)
+    with patch("app.agents.model_factory.GoogleModel") as google_model:
+        model = factory.build(ModelRole.PLANNER)
 
-    assert isinstance(model, GoogleModel)
+    google_model.assert_called_once_with("gemini-2.5-flash", provider="google-cloud")
+    assert model is google_model.return_value
     assert factory.name_for(ModelRole.PLANNER) == "vertex:gemini-2.5-flash"
 
 
