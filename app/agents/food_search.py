@@ -3,6 +3,7 @@
 import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
+from time import perf_counter
 from typing import Any, Awaitable, Callable, TypeVar, cast
 
 from elasticsearch import AsyncElasticsearch
@@ -22,6 +23,8 @@ from app.repositories.queries import (
 )
 from app.repositories.usda import USDARepository
 from app.repositories.wikidata import WikidataFoodRepository
+from app.observability import metrics
+from app.observability.tracing import tracing
 from app.settings import get_settings
 
 QueryT = TypeVar("QueryT", bound=SearchQuery)
@@ -199,6 +202,7 @@ class FoodSearchDependencies:
         serialized = query.model_dump_json() if isinstance(query, BaseModel) else str(query)
         key = f"{operation}:{serialized}"
         task = self._request_cache.get(key)
+        cache_status = "hit" if task is not None else "miss"
         if task is None:
             async def execute_call() -> Any:
                 """Adapt a generic awaitable to a task coroutine."""
@@ -206,13 +210,36 @@ class FoodSearchDependencies:
 
             task = asyncio.create_task(execute_call())
             self._request_cache[key] = task
-        try:
-            return await asyncio.wait_for(
-                asyncio.shield(task), timeout=self.retrieval_timeout_seconds
-            )
-        except Exception:
-            self._request_cache.pop(key, None)
-            raise
+        started = perf_counter()
+        with tracing.span(
+            "foodmind.retrieval",
+            {
+                "foodmind.operation": operation,
+                "foodmind.cache": cache_status,
+            },
+        ) as span:
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=self.retrieval_timeout_seconds
+                )
+            except Exception:
+                self._request_cache.pop(key, None)
+                span.set_attribute("foodmind.outcome", "error")
+                metrics.record_retrieval(
+                    operation=operation,
+                    outcome="error",
+                    cache=cache_status,
+                    duration_seconds=perf_counter() - started,
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+        metrics.record_retrieval(
+            operation=operation,
+            outcome="success",
+            cache=cache_status,
+            duration_seconds=perf_counter() - started,
+        )
+        return result
 
     @staticmethod
     def _bounded(query: QueryT) -> QueryT:
@@ -272,7 +299,30 @@ class FoodSearchAgent:
         Returns:
             Typed agent response containing a summary and search results.
         """
-        return await self.agent.run(prompt, deps=deps)
+        settings = get_settings()
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        with tracing.span(
+            "foodmind.llm.agent", {"foodmind.agent": "food_search"}
+        ) as span:
+            try:
+                result = await self.agent.run(prompt, deps=deps)
+            except Exception:
+                span.set_attribute("foodmind.outcome", "error")
+                metrics.record_llm_failure(
+                    component="agent", agent="food_search", model=model
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+            span.set_attribute("gen_ai.request.model", model.removeprefix("openai:"))
+            span.set_attribute("gen_ai.usage.input_tokens", result.usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", result.usage.output_tokens)
+        metrics.record_llm_usage(
+            component="agent",
+            agent="food_search",
+            model=model,
+            usage=result.usage,
+        )
+        return result
 
     async def search_foods(
         self,

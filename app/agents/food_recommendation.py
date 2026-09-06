@@ -10,6 +10,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.aggregates import BrandedFood, FoodEntity, FoundationFood, OpenFoodFactsProduct
 from app.agents.food_search import FoodSearchDependencies
+from app.observability import metrics
+from app.observability.tracing import tracing
 from app.repositories.queries import BrandedFoodQuery, OpenFoodFactsQuery, USDAFoodQuery, WikidataFoodQuery
 from app.settings import get_settings
 
@@ -88,7 +90,30 @@ class FoodRecommendationAgent:
         self, prompt: str, *, deps: FoodSearchDependencies
     ) -> AgentRunResult[FoodRecommendationAnswer]:
         """Run the recommendation agent with request-scoped repositories."""
-        return await self.agent.run(prompt, deps=deps)
+        settings = get_settings()
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        with tracing.span(
+            "foodmind.llm.agent", {"foodmind.agent": "food_recommendation"}
+        ) as span:
+            try:
+                result = await self.agent.run(prompt, deps=deps)
+            except Exception:
+                span.set_attribute("foodmind.outcome", "error")
+                metrics.record_llm_failure(
+                    component="agent", agent="food_recommendation", model=model
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+            span.set_attribute("gen_ai.request.model", model.removeprefix("openai:"))
+            span.set_attribute("gen_ai.usage.input_tokens", result.usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", result.usage.output_tokens)
+        metrics.record_llm_usage(
+            component="agent",
+            agent="food_recommendation",
+            model=model,
+            usage=result.usage,
+        )
+        return result
 
     async def recommend_foods(
         self,

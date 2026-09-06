@@ -9,6 +9,8 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.settings import get_settings
+from app.observability import metrics
+from app.observability.tracing import tracing
 
 
 class AgentName(StrEnum):
@@ -107,4 +109,25 @@ class FoodMindPlanner:
 
     async def plan(self, prompt: str) -> AgentRunResult[ExecutionPlan]:
         """Create a typed execution plan for a user request."""
-        return await self.agent.run(prompt)
+        settings = get_settings()
+        model = settings.OPENAI_PLANNER_MODEL or settings.OPENAI_MODEL
+        with tracing.span("foodmind.llm.planner") as span:
+            try:
+                result = await self.agent.run(prompt)
+            except Exception:
+                span.set_attribute("foodmind.outcome", "error")
+                metrics.record_llm_failure(
+                    component="planner", agent="planner", model=model
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+            span.set_attribute("gen_ai.request.model", model.removeprefix("openai:"))
+            span.set_attribute("gen_ai.usage.input_tokens", result.usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", result.usage.output_tokens)
+        metrics.record_llm_usage(
+            component="planner",
+            agent="planner",
+            model=model,
+            usage=result.usage,
+        )
+        return result

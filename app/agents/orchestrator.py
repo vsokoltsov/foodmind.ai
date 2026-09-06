@@ -31,6 +31,8 @@ from app.agents.product_comparison import (
 )
 from app.agents.planner import AgentName, ExecutionPlan, FoodMindPlanner
 from app.agents.router import FoodMindRouter, RouteKind
+from app.observability import metrics
+from app.observability.tracing import tracing
 from app.settings import get_settings
 
 if TYPE_CHECKING:
@@ -167,6 +169,7 @@ class FoodMindOrchestrator:
         usage_limits: UsageLimits | None = None,
     ) -> OrchestratorRunResult:
         """Run a direct specialist or a planned concurrent workflow."""
+        run_started = perf_counter()
         self._bind_agents(deps)
         deps.reset_budget()
         deps.repositories.reset_request_cache()
@@ -175,23 +178,58 @@ class FoodMindOrchestrator:
             original_query=prompt, rewritten_query=prompt
         )
         route = self.router.route(prompt)
-        if route.kind is RouteKind.DIRECT and route.agent is not None:
-            return await self._run_direct(route.agent, prompt, deps, usage_limits)
-
+        route_name = "direct" if route.kind is RouteKind.DIRECT else "planned"
         try:
-            started = perf_counter()
-            plan = await self.create_plan(prompt)
-            deps.execution_state.record_duration(
-                "planner", (perf_counter() - started) * 1000
+            if route.kind is RouteKind.DIRECT and route.agent is not None:
+                result = await self._run_direct(route.agent, prompt, deps, usage_limits)
+            else:
+                planner_started = perf_counter()
+                with tracing.span("foodmind.orchestrator.plan") as span:
+                    try:
+                        plan = await self.create_plan(prompt)
+                    except Exception as error:
+                        span.set_attribute("foodmind.outcome", "error")
+                        deps.execution_state.record_error("planner", error)
+                        await deps.emit("planner_error", error=str(error))
+                        metrics.record_stage(
+                            stage="planner",
+                            outcome="error",
+                            duration_seconds=perf_counter() - planner_started,
+                        )
+                        raise
+                    span.set_attribute("foodmind.outcome", "success")
+                planner_duration = perf_counter() - planner_started
+                deps.execution_state.record_duration("planner", planner_duration * 1000)
+                metrics.record_stage(
+                    stage="planner",
+                    outcome="success",
+                    duration_seconds=planner_duration,
+                )
+                execution_started = perf_counter()
+                with tracing.span("foodmind.orchestrator.execute") as span:
+                    report = await self.executor.execute(
+                        plan.output, prompt=prompt, dependencies=deps
+                    )
+                    span.set_attribute("foodmind.outcome", "success")
+                metrics.record_stage(
+                    stage="executor",
+                    outcome="success",
+                    duration_seconds=perf_counter() - execution_started,
+                )
+                result = await self._synthesize(prompt, report)
+        except Exception:
+            metrics.record_orchestrator_run(
+                route=route_name,
+                outcome="error",
+                duration_seconds=perf_counter() - run_started,
             )
-        except Exception as error:
-            deps.execution_state.record_error("planner", error)
-            await deps.emit("planner_error", error=str(error))
             raise
-        report = await self.executor.execute(
-            plan.output, prompt=prompt, dependencies=deps
+        metrics.record_orchestrator_run(
+            route=route_name,
+            outcome="success",
+            duration_seconds=perf_counter() - run_started,
         )
-        return await self._synthesize(prompt, report)
+        return result
 
     def _bind_agents(self, deps: OrchestratorDependencies) -> None:
         """Reuse process-scoped specialist agents with request-scoped repositories."""
@@ -214,20 +252,50 @@ class FoodMindOrchestrator:
         await deps.emit("tool_started", agent=agent.value, tool=self._tool_name(agent))
         started = perf_counter()
         try:
-            result = await asyncio.wait_for(
-                self._call_agent(agent, prompt, deps, usage_limits),
-                timeout=get_settings().AGENT_TIMEOUT_SECONDS,
-            )
+            with tracing.span(
+                "foodmind.agent.execute", {"foodmind.agent": agent.value}
+            ) as span:
+                result = await asyncio.wait_for(
+                    self._call_agent(agent, prompt, deps, usage_limits),
+                    timeout=get_settings().AGENT_TIMEOUT_SECONDS,
+                )
+                span.set_attribute("foodmind.outcome", "success")
         except Exception as error:
+            duration = perf_counter() - started
             if deps.execution_state is not None:
                 deps.execution_state.record_error(step_key, error)
+            metrics.record_agent_run(
+                agent=agent.value,
+                outcome="error",
+                cached=False,
+                duration_seconds=duration,
+            )
+            metrics.record_stage(
+                stage="agent", outcome="error", duration_seconds=duration
+            )
+            metrics.record_tool_call(
+                agent=agent.value,
+                tool=self._tool_name(agent),
+                outcome="error",
+            )
             await deps.emit("agent_error", agent=agent.value, step=step_key, error=str(error))
             raise
+        duration = perf_counter() - started
         if deps.execution_state is not None:
             deps.execution_state.complete_step(step_key, result)
-            deps.execution_state.record_duration(
-                step_key, (perf_counter() - started) * 1000
-            )
+            deps.execution_state.record_duration(step_key, duration * 1000)
+        metrics.record_agent_run(
+            agent=agent.value,
+            outcome="success",
+            cached=False,
+            duration_seconds=duration,
+        )
+        metrics.record_stage(stage="agent", outcome="success", duration_seconds=duration)
+        metrics.record_tool_call(
+            agent=agent.value,
+            tool=self._tool_name(agent),
+            outcome="success",
+        )
         await deps.emit("tool_completed", agent=agent.value, tool=self._tool_name(agent))
         await deps.emit("agent_completed", agent=agent.value, step=step_key)
         return OrchestratorRunResult(
@@ -282,18 +350,44 @@ class FoodMindOrchestrator:
             if task.output is not None
         ]
         started = perf_counter()
-        result = await asyncio.wait_for(
-            self.synthesizer.run(
-                f"User request:\n{prompt}\n\nSpecialist evidence:\n"
-                f"{json.dumps(evidence, ensure_ascii=False)}"
-            ),
-            timeout=get_settings().SYNTHESIS_TIMEOUT_SECONDS,
+        settings = get_settings()
+        model = settings.OPENAI_SYNTHESIS_MODEL or settings.OPENAI_MODEL
+        with tracing.span("foodmind.orchestrator.synthesis") as span:
+            try:
+                result = await asyncio.wait_for(
+                    self.synthesizer.run(
+                        f"User request:\n{prompt}\n\nSpecialist evidence:\n"
+                        f"{json.dumps(evidence, ensure_ascii=False)}"
+                    ),
+                    timeout=settings.SYNTHESIS_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                span.set_attribute("foodmind.outcome", "error")
+                duration = perf_counter() - started
+                metrics.record_llm_failure(
+                    component="synthesis", agent="synthesis", model=model
+                )
+                metrics.record_stage(
+                    stage="synthesis", outcome="error", duration_seconds=duration
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+            span.set_attribute("gen_ai.request.model", model.removeprefix("openai:"))
+            span.set_attribute("gen_ai.usage.input_tokens", result.usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", result.usage.output_tokens)
+        duration = perf_counter() - started
+        metrics.record_llm_usage(
+            component="synthesis",
+            agent="synthesis",
+            model=model,
+            usage=result.usage,
+        )
+        metrics.record_stage(
+            stage="synthesis", outcome="success", duration_seconds=duration
         )
         output = result.output
         if report.execution_state is not None:
-            report.execution_state.record_duration(
-                "synthesis", (perf_counter() - started) * 1000
-            )
+            report.execution_state.record_duration("synthesis", duration * 1000)
         output.used_agents = [task.agent.value for task in successful]
         return OrchestratorRunResult(output=output)
 

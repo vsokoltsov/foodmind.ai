@@ -10,6 +10,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.agents.food_search import FoodSearchDependencies
 from app.aggregates import BrandedFood, OpenFoodFactsProduct
+from app.observability import metrics
+from app.observability.tracing import tracing
 from app.repositories.queries import BrandedFoodQuery, OpenFoodFactsQuery
 from app.settings import get_settings
 
@@ -97,7 +99,30 @@ class ProductComparisonAgent:
         self, prompt: str, *, deps: FoodSearchDependencies
     ) -> AgentRunResult[ProductComparisonAnswer]:
         """Run the comparison agent with request-scoped repositories."""
-        return await self.agent.run(prompt, deps=deps)
+        settings = get_settings()
+        model = settings.OPENAI_AGENT_MODEL or settings.OPENAI_MODEL
+        with tracing.span(
+            "foodmind.llm.agent", {"foodmind.agent": "product_comparison"}
+        ) as span:
+            try:
+                result = await self.agent.run(prompt, deps=deps)
+            except Exception:
+                span.set_attribute("foodmind.outcome", "error")
+                metrics.record_llm_failure(
+                    component="agent", agent="product_comparison", model=model
+                )
+                raise
+            span.set_attribute("foodmind.outcome", "success")
+            span.set_attribute("gen_ai.request.model", model.removeprefix("openai:"))
+            span.set_attribute("gen_ai.usage.input_tokens", result.usage.input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", result.usage.output_tokens)
+        metrics.record_llm_usage(
+            component="agent",
+            agent="product_comparison",
+            model=model,
+            usage=result.usage,
+        )
+        return result
 
     async def compare_products(
         self,

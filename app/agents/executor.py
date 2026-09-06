@@ -13,6 +13,8 @@ from app.agents.nutrition_analysis import NutritionAnalysisAnswer
 from app.agents.orchestrator import OrchestratorDependencies
 from app.agents.planner import AgentName, ExecutionPlan, PlannedTask
 from app.agents.product_comparison import ProductComparisonAnswer
+from app.observability import metrics
+from app.observability.tracing import tracing
 
 
 AgentOutput = (
@@ -151,11 +153,17 @@ class PlanExecutor:
             if dependencies.execution_state is not None:
                 dependencies.execution_state.select_agent(task.agent.value)
                 dependencies.execution_state.complete_step(step_key, cached)
+            metrics.record_agent_run(
+                agent=task.agent.value,
+                outcome="success",
+                cached=True,
+            )
             return TaskExecution(
                 task_id=task.id, agent=task.agent, output=cached, cached=True
             )
+        started = perf_counter()
+        step_key = f"{task.id}:{task.agent.value}"
         try:
-            step_key = f"{task.id}:{task.agent.value}"
             dependencies.authorize(task.agent.value, step_key)
             await dependencies.emit("agent_started", agent=task.agent.value, step=step_key)
             await dependencies.emit(
@@ -163,17 +171,38 @@ class PlanExecutor:
                 agent=task.agent.value,
                 tool=self._tool_name(task.agent),
             )
-            started = perf_counter()
-            result = await asyncio.wait_for(
-                self._call_agent(task.agent, self._prompt(task, context), dependencies),
-                timeout=self.task_timeout_seconds,
-            )
+            with tracing.span(
+                "foodmind.agent.execute",
+                {"foodmind.agent": task.agent.value},
+            ) as span:
+                result = await asyncio.wait_for(
+                    self._call_agent(
+                        task.agent, self._prompt(task, context), dependencies
+                    ),
+                    timeout=self.task_timeout_seconds,
+                )
+                span.set_attribute("foodmind.outcome", "success")
             self._cache[cache_key] = result
             if dependencies.execution_state is not None:
                 dependencies.execution_state.complete_step(step_key, result)
                 dependencies.execution_state.record_duration(
                     step_key, (perf_counter() - started) * 1000
                 )
+            duration = perf_counter() - started
+            metrics.record_agent_run(
+                agent=task.agent.value,
+                outcome="success",
+                cached=False,
+                duration_seconds=duration,
+            )
+            metrics.record_stage(
+                stage="agent", outcome="success", duration_seconds=duration
+            )
+            metrics.record_tool_call(
+                agent=task.agent.value,
+                tool=self._tool_name(task.agent),
+                outcome="success",
+            )
             await dependencies.emit(
                 "tool_completed",
                 agent=task.agent.value,
@@ -182,8 +211,26 @@ class PlanExecutor:
             await dependencies.emit("agent_completed", agent=task.agent.value, step=step_key)
             return TaskExecution(task_id=task.id, agent=task.agent, output=result)
         except Exception as error:
+            duration = perf_counter() - started
             if dependencies.execution_state is not None:
                 dependencies.execution_state.record_error(step_key, error)
+            metrics.record_agent_run(
+                agent=task.agent.value,
+                outcome="error",
+                cached=False,
+                duration_seconds=duration,
+            )
+            metrics.record_stage(
+                stage="agent", outcome="error", duration_seconds=duration
+            )
+            metrics.record_tool_call(
+                agent=task.agent.value,
+                tool=self._tool_name(task.agent),
+                outcome="error",
+            )
+            await dependencies.emit(
+                "agent_error", agent=task.agent.value, step=step_key, error=str(error)
+            )
             return TaskExecution(task_id=task.id, agent=task.agent, error=str(error))
 
     @staticmethod
