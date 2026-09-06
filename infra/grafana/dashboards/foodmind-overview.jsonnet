@@ -79,15 +79,15 @@ local row(id, title, panels, y) = {
     ], 4),
 
     row(600, 'LLM token usage', [
-      panel(23, 'Token use by model', 'sum by (component, agent, model, direction) (increase(foodmind_llm_tokens_total[$__interval]))', '{{component}} · {{agent}} · {{model}} · {{direction}}', 0, 0, 'tokens'),
-      panel(24, 'Total input and output tokens', 'sum by (direction) (increase(foodmind_llm_tokens_total[$__interval]))', '{{direction}}', 12, 0, 'tokens'),
+      panel(23, 'Token use by model', 'sum by (component, agent, model, direction) (increase(foodmind_llm_tokens_total[$__rate_interval]))', '{{component}} · {{agent}} · {{model}} · {{direction}}', 0, 0, 'tokens'),
+      panel(24, 'Total input and output tokens', 'sum by (direction) (increase(foodmind_llm_tokens_total[$__rate_interval]))', '{{direction}}', 12, 0, 'tokens'),
       panel(25, 'LLM run outcomes', 'sum by (component, agent, model, outcome) (rate(foodmind_llm_requests_total[$__rate_interval]))', '{{component}} · {{agent}} · {{model}} · {{outcome}}', 0, 8, 'ops'),
       panel(26, 'LLM error ratio', 'sum(rate(foodmind_llm_requests_total{outcome="error"}[$__rate_interval])) / clamp_min(sum(rate(foodmind_llm_requests_total[$__rate_interval])), 0.001)', 'error ratio', 12, 8, 'percentunit'),
     ], 5),
 
     row(700, 'Feedback', [
-      panel(27, 'Feedback submissions', 'sum by (is_useful) (increase(foodmind_feedback_submissions_total[$__interval]))', 'useful={{is_useful}}', 0, 0, 'short'),
-      panel(28, 'Useful-feedback ratio', 'sum(increase(foodmind_feedback_submissions_total{is_useful="true"}[$__interval])) / clamp_min(sum(increase(foodmind_feedback_submissions_total[$__interval])), 1)', 'useful feedback ratio', 12, 0, 'percentunit'),
+      panel(27, 'Feedback submissions', 'sum by (is_useful) (increase(foodmind_feedback_submissions_total[$__rate_interval]))', 'useful={{is_useful}}', 0, 0, 'short'),
+      panel(28, 'Useful-feedback ratio', 'sum(increase(foodmind_feedback_submissions_total{is_useful="true"}[$__rate_interval])) / clamp_min(sum(increase(foodmind_feedback_submissions_total[$__rate_interval])), 1)', 'useful feedback ratio', 12, 0, 'percentunit'),
     ], 6),
 
     row(800, 'Platform health', [

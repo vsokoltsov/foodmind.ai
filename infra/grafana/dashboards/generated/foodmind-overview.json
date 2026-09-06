@@ -981,7 +981,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum by (component, agent, model, direction) (increase(foodmind_llm_tokens_total[$__interval]))",
+                     "expr": "sum by (component, agent, model, direction) (increase(foodmind_llm_tokens_total[$__rate_interval]))",
                      "legendFormat": "{{component}} · {{agent}} · {{model}} · {{direction}}",
                      "refId": "A"
                   }
@@ -1020,7 +1020,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum by (direction) (increase(foodmind_llm_tokens_total[$__interval]))",
+                     "expr": "sum by (direction) (increase(foodmind_llm_tokens_total[$__rate_interval]))",
                      "legendFormat": "{{direction}}",
                      "refId": "A"
                   }
@@ -1151,7 +1151,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum by (is_useful) (increase(foodmind_feedback_submissions_total[$__interval]))",
+                     "expr": "sum by (is_useful) (increase(foodmind_feedback_submissions_total[$__rate_interval]))",
                      "legendFormat": "useful={{is_useful}}",
                      "refId": "A"
                   }
@@ -1190,7 +1190,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum(increase(foodmind_feedback_submissions_total{is_useful=\"true\"}[$__interval])) / clamp_min(sum(increase(foodmind_feedback_submissions_total[$__interval])), 1)",
+                     "expr": "sum(increase(foodmind_feedback_submissions_total{is_useful=\"true\"}[$__rate_interval])) / clamp_min(sum(increase(foodmind_feedback_submissions_total[$__rate_interval])), 1)",
                      "legendFormat": "useful feedback ratio",
                      "refId": "A"
                   }
