@@ -29,6 +29,7 @@ from app.agents.product_comparison import (
     ProductComparisonAgent,
     ProductComparisonAnswer,
 )
+from app.agents.query_rewriter import QueryRewriter
 from app.agents.planner import AgentName, ExecutionPlan, FoodMindPlanner
 from app.agents.router import FoodMindRouter, RouteKind
 from app.observability import metrics
@@ -86,11 +87,18 @@ class OrchestratorDependencies:
             food_recommendation=FoodRecommendationAgent(),
         )
 
-    def reset_budget(self) -> None:
-        """Reset call counters before starting a new user request."""
+    def reset_budget(self, *, reset_state: bool = True) -> None:
+        """Reset call counters before starting a new user request.
+
+        Args:
+            reset_state: Also discard the request's prompt and execution state.
+                Executors pass ``False`` when they are continuing the state
+                initialized by the orchestrator's rewrite stage.
+        """
         self.calls.clear()
-        self.original_prompt = None
-        self.execution_state = None
+        if reset_state:
+            self.original_prompt = None
+            self.execution_state = None
 
     def authorize(self, agent_name: str, step_key: str | None = None) -> None:
         """Enforce total and per-agent delegation limits."""
@@ -113,6 +121,7 @@ class FoodMindOrchestrator:
 
     instructions: str | None = None
     planner: FoodMindPlanner = field(init=False)
+    query_rewriter: QueryRewriter = field(init=False)
     router: FoodMindRouter = field(init=False)
     executor: "PlanExecutor" = field(init=False)
     synthesizer: Agent[None, OrchestratorAnswer] = field(init=False)
@@ -124,6 +133,7 @@ class FoodMindOrchestrator:
     def __post_init__(self) -> None:
         """Create the request router, plan executor, and final synthesizer."""
         settings = get_settings()
+        self.query_rewriter = QueryRewriter()
         self.planner = FoodMindPlanner()
         self.router = FoodMindRouter()
         self.food_search = FoodSearchAgent()
@@ -174,19 +184,36 @@ class FoodMindOrchestrator:
         deps.reset_budget()
         deps.repositories.reset_request_cache()
         deps.original_prompt = prompt
-        deps.execution_state = ExecutionState(
-            original_query=prompt, rewritten_query=prompt
+        deps.execution_state = ExecutionState(original_query=prompt)
+        rewrite_started = perf_counter()
+        rewrite = await self.query_rewriter.rewrite(prompt)
+        rewritten_prompt = rewrite.query
+        deps.execution_state.rewritten_query = rewritten_prompt
+        deps.execution_state.record_duration(
+            "query_rewrite", (perf_counter() - rewrite_started) * 1000
         )
-        route = self.router.route(prompt)
+        await deps.emit(
+            "query_rewritten",
+            method=rewrite.method.value,
+            query=rewritten_prompt,
+        )
+        metrics.record_stage(
+            stage="query_rewrite",
+            outcome="success",
+            duration_seconds=perf_counter() - rewrite_started,
+        )
+        route = self.router.route(rewritten_prompt)
         route_name = "direct" if route.kind is RouteKind.DIRECT else "planned"
         try:
             if route.kind is RouteKind.DIRECT and route.agent is not None:
-                result = await self._run_direct(route.agent, prompt, deps, usage_limits)
+                result = await self._run_direct(
+                    route.agent, rewritten_prompt, deps, usage_limits
+                )
             else:
                 planner_started = perf_counter()
                 with tracing.span("foodmind.orchestrator.plan") as span:
                     try:
-                        plan = await self.create_plan(prompt)
+                        plan = await self.create_plan(rewritten_prompt)
                     except Exception as error:
                         span.set_attribute("foodmind.outcome", "error")
                         deps.execution_state.record_error("planner", error)
@@ -208,7 +235,7 @@ class FoodMindOrchestrator:
                 execution_started = perf_counter()
                 with tracing.span("foodmind.orchestrator.execute") as span:
                     report = await self.executor.execute(
-                        plan.output, prompt=prompt, dependencies=deps
+                        plan.output, prompt=rewritten_prompt, dependencies=deps
                     )
                     span.set_attribute("foodmind.outcome", "success")
                 metrics.record_stage(
@@ -278,7 +305,9 @@ class FoodMindOrchestrator:
                 tool=self._tool_name(agent),
                 outcome="error",
             )
-            await deps.emit("agent_error", agent=agent.value, step=step_key, error=str(error))
+            await deps.emit(
+                "agent_error", agent=agent.value, step=step_key, error=str(error)
+            )
             raise
         duration = perf_counter() - started
         if deps.execution_state is not None:
@@ -290,13 +319,17 @@ class FoodMindOrchestrator:
             cached=False,
             duration_seconds=duration,
         )
-        metrics.record_stage(stage="agent", outcome="success", duration_seconds=duration)
+        metrics.record_stage(
+            stage="agent", outcome="success", duration_seconds=duration
+        )
         metrics.record_tool_call(
             agent=agent.value,
             tool=self._tool_name(agent),
             outcome="success",
         )
-        await deps.emit("tool_completed", agent=agent.value, tool=self._tool_name(agent))
+        await deps.emit(
+            "tool_completed", agent=agent.value, tool=self._tool_name(agent)
+        )
         await deps.emit("agent_completed", agent=agent.value, step=step_key)
         return OrchestratorRunResult(
             output=OrchestratorAnswer(answer=result.answer, used_agents=[agent.value])
@@ -308,11 +341,18 @@ class FoodMindOrchestrator:
         prompt: str,
         deps: OrchestratorDependencies,
         usage_limits: UsageLimits | None,
-    ) -> FoodSearchAnswer | NutritionAnalysisAnswer | ProductComparisonAnswer | FoodRecommendationAnswer:
+    ) -> (
+        FoodSearchAnswer
+        | NutritionAnalysisAnswer
+        | ProductComparisonAnswer
+        | FoodRecommendationAnswer
+    ):
         """Dispatch a direct specialist request to its typed agent."""
         match agent:
             case AgentName.FOOD_SEARCH:
-                return (await deps.food_search.run(prompt, deps=deps.repositories)).output
+                return (
+                    await deps.food_search.run(prompt, deps=deps.repositories)
+                ).output
             case AgentName.NUTRITION_ANALYSIS:
                 return (
                     await deps.nutrition_analysis.run(
@@ -320,9 +360,13 @@ class FoodMindOrchestrator:
                     )
                 ).output
             case AgentName.PRODUCT_COMPARISON:
-                return (await deps.product_comparison.run(prompt, deps=deps.repositories)).output
+                return (
+                    await deps.product_comparison.run(prompt, deps=deps.repositories)
+                ).output
             case AgentName.FOOD_RECOMMENDATION:
-                return (await deps.food_recommendation.run(prompt, deps=deps.repositories)).output
+                return (
+                    await deps.food_recommendation.run(prompt, deps=deps.repositories)
+                ).output
 
     async def _synthesize(
         self, prompt: str, report: "ExecutionReport"
@@ -409,8 +453,5 @@ class FoodMindOrchestrator:
         if isinstance(value, list):
             return [cls._compact(item) for item in value[:3]]
         if isinstance(value, dict):
-            return {
-                key: cls._compact(item)
-                for key, item in list(value.items())[:12]
-            }
+            return {key: cls._compact(item) for key, item in list(value.items())[:12]}
         return value

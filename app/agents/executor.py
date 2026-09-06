@@ -70,13 +70,18 @@ class PlanExecutor:
         executor cache. Failed tasks are reported without discarding successful
         results, while dependent tasks are marked as blocked.
         """
-        dependencies.reset_budget()
+        # The orchestrator has already initialized original and rewritten
+        # prompts. Reset only the delegation counters so that execution state
+        # remains available for observability and synthesis.
+        dependencies.reset_budget(reset_state=False)
         dependencies.max_total_calls = self.max_total_calls
         dependencies.max_calls_per_agent = self.max_calls_per_agent
-        dependencies.original_prompt = prompt
-        dependencies.execution_state = ExecutionState(
-            original_query=prompt, rewritten_query=prompt
-        )
+        if dependencies.original_prompt is None:
+            dependencies.original_prompt = prompt
+        if dependencies.execution_state is None:
+            dependencies.execution_state = ExecutionState(
+                original_query=prompt, rewritten_query=prompt
+            )
         by_id = {task.id: task for task in plan.tasks}
         completed: dict[str, TaskExecution] = {}
         pending = set(by_id)
@@ -85,8 +90,13 @@ class PlanExecutor:
             blocked = [
                 by_id[task_id]
                 for task_id in pending
-                if all(dependency in completed for dependency in by_id[task_id].depends_on)
-                and any(completed[dependency].error for dependency in by_id[task_id].depends_on)
+                if all(
+                    dependency in completed for dependency in by_id[task_id].depends_on
+                )
+                and any(
+                    completed[dependency].error
+                    for dependency in by_id[task_id].depends_on
+                )
             ]
             for task in blocked:
                 completed[task.id] = TaskExecution(
@@ -105,8 +115,7 @@ class PlanExecutor:
                 by_id[task_id]
                 for task_id in pending
                 if all(
-                    dependency in completed
-                    and completed[dependency].output is not None
+                    dependency in completed and completed[dependency].output is not None
                     for dependency in by_id[task_id].depends_on
                 )
             ]
@@ -119,7 +128,8 @@ class PlanExecutor:
                     )
                     if dependencies.execution_state is not None:
                         dependencies.execution_state.record_error(
-                            task_id, ValueError("Blocked by a failed or unresolved dependency")
+                            task_id,
+                            ValueError("Blocked by a failed or unresolved dependency"),
                         )
                 break
             results = await asyncio.gather(
@@ -165,7 +175,9 @@ class PlanExecutor:
         step_key = f"{task.id}:{task.agent.value}"
         try:
             dependencies.authorize(task.agent.value, step_key)
-            await dependencies.emit("agent_started", agent=task.agent.value, step=step_key)
+            await dependencies.emit(
+                "agent_started", agent=task.agent.value, step=step_key
+            )
             await dependencies.emit(
                 "tool_started",
                 agent=task.agent.value,
@@ -208,7 +220,9 @@ class PlanExecutor:
                 agent=task.agent.value,
                 tool=self._tool_name(task.agent),
             )
-            await dependencies.emit("agent_completed", agent=task.agent.value, step=step_key)
+            await dependencies.emit(
+                "agent_completed", agent=task.agent.value, step=step_key
+            )
             return TaskExecution(task_id=task.id, agent=task.agent, output=result)
         except Exception as error:
             duration = perf_counter() - started
@@ -249,13 +263,29 @@ class PlanExecutor:
         """Dispatch one task to its typed specialist agent."""
         match agent:
             case AgentName.FOOD_SEARCH:
-                return (await dependencies.food_search.run(prompt, deps=dependencies.repositories)).output
+                return (
+                    await dependencies.food_search.run(
+                        prompt, deps=dependencies.repositories
+                    )
+                ).output
             case AgentName.NUTRITION_ANALYSIS:
-                return (await dependencies.nutrition_analysis.run(prompt, deps=dependencies.repositories)).output
+                return (
+                    await dependencies.nutrition_analysis.run(
+                        prompt, deps=dependencies.repositories
+                    )
+                ).output
             case AgentName.PRODUCT_COMPARISON:
-                return (await dependencies.product_comparison.run(prompt, deps=dependencies.repositories)).output
+                return (
+                    await dependencies.product_comparison.run(
+                        prompt, deps=dependencies.repositories
+                    )
+                ).output
             case AgentName.FOOD_RECOMMENDATION:
-                return (await dependencies.food_recommendation.run(prompt, deps=dependencies.repositories)).output
+                return (
+                    await dependencies.food_recommendation.run(
+                        prompt, deps=dependencies.repositories
+                    )
+                ).output
 
     @staticmethod
     def _prompt(task: PlannedTask, context: str) -> str:
