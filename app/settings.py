@@ -20,9 +20,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "openai:gpt-5-mini"
     OPENAI_PLANNER_MODEL: str | None = None
+    OPENAI_QUERY_REWRITER_MODEL: str | None = None
     OPENAI_AGENT_MODEL: str | None = None
     OPENAI_SYNTHESIS_MODEL: str | None = None
     PLANNER_TIMEOUT_SECONDS: float = 30.0
+    QUERY_REWRITE_TIMEOUT_SECONDS: float = 15.0
     AGENT_TIMEOUT_SECONDS: float = 120.0
     SYNTHESIS_TIMEOUT_SECONDS: float = 60.0
     RETRIEVAL_TIMEOUT_SECONDS: float = 5.0
