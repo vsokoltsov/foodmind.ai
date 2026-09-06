@@ -95,6 +95,16 @@ class Metrics:
             "Duration of a chat-message processing step.",
             ["step", "outcome"],
         )
+        self.context_message_count = Histogram(
+            "foodmind_conversation_context_messages",
+            "Number of persisted messages included in one model context.",
+            buckets=(0, 1, 2, 4, 8, 16),
+        )
+        self.context_character_count = Histogram(
+            "foodmind_conversation_context_characters",
+            "Number of characters included in one model context.",
+            buckets=(0, 500, 1_000, 2_000, 4_000, 8_000, 16_000),
+        )
         self.feedback_submissions = Counter(
             "foodmind_feedback_submissions",
             "Number of feedback submissions, including replacements.",
@@ -233,6 +243,11 @@ class Metrics:
     def record_feedback(self, *, is_useful: bool) -> None:
         """Record one user feedback submission."""
         self.feedback_submissions.labels(is_useful=str(is_useful).lower()).inc()
+
+    def record_context(self, *, message_count: int, character_count: int) -> None:
+        """Record the bounded conversation context sent to the orchestrator."""
+        self.context_message_count.observe(message_count)
+        self.context_character_count.observe(character_count)
 
     def record_nats_command(self, *, outcome: str, duration_seconds: float) -> None:
         """Record one command publication to the NATS broker."""

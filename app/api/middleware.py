@@ -40,12 +40,13 @@ async def instrument_requests(
         return response
     finally:
         route = request.scope.get("route")
-        route_path = getattr(route, "path", None) or "/unmatched"
+        route_path = route.path if route is not None else None
         duration = perf_counter() - started
         metrics.api_requests_in_progress.labels(method=method).dec()
-        metrics.record_api_request(
-            method=method,
-            path=route_path,
-            status=status_code,
-            duration_seconds=duration,
-        )
+        if route_path is not None:
+            metrics.record_api_request(
+                method=method,
+                path=route_path,
+                status=status_code,
+                duration_seconds=duration,
+            )

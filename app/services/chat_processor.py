@@ -36,14 +36,40 @@ class ChatProcessor:
         async with SessionFactory() as session:
             conversations = ConversationRepository(session)
             messages = MessageRepository(session)
+            context_started = perf_counter()
             conversation = await conversations.get(command.chat_id)
             if conversation is None or conversation.user_id != command.user_id:
                 raise ValueError("Chat does not belong to the command user")
+            metrics.record_message_step(
+                step="load_conversation",
+                outcome="success",
+                duration_seconds=perf_counter() - context_started,
+            )
+            history_started = perf_counter()
             previous_messages = await messages.list_by_conversation(command.chat_id)
+            metrics.record_message_step(
+                step="load_history",
+                outcome="success",
+                duration_seconds=perf_counter() - history_started,
+            )
+            context_started = perf_counter()
             context = ConversationContextBuilder().build(
                 summary=conversation.summary,
                 messages=previous_messages,
                 current_message=command.content,
+            )
+            metrics.record_context(
+                message_count=len(context.recent_messages),
+                character_count=sum(
+                    len(message.content) for message in context.recent_messages
+                )
+                + len(context.summary or "")
+                + len(context.current_message),
+            )
+            metrics.record_message_step(
+                step="build_context",
+                outcome="success",
+                duration_seconds=perf_counter() - context_started,
             )
             persistence_started = perf_counter()
             with tracing.span("foodmind.message.persist_user") as span:
