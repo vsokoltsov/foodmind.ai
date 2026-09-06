@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from app.agents.orchestrator import FoodMindOrchestrator
 from app.evaluation.artifacts import EvaluationArtifactRepository
+from app.observability.tracing import tracing
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -44,3 +45,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await client.close()
+        tracing.shutdown()

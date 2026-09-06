@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from time import perf_counter
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -14,6 +15,8 @@ from app.agents.food_search import FoodSearchDependencies
 from app.agents.orchestrator import OrchestratorDependencies
 from app.aggregates import Conversation, Feedback, Message
 from app.database import SessionFactory
+from app.observability import metrics
+from app.observability.tracing import tracing
 from app.repositories.chat import (
     ConversationRepository,
     MessageRepository,
@@ -153,11 +156,28 @@ async def _process_message(
 ) -> ChatAnswerResponse:
     """Persist a user message, run the orchestrator, and persist its answer."""
     messages = MessageRepository(session)
-    await messages.create(
-        Message(conversation_id=chat_id, role="user", content=content)
+    persistence_started = perf_counter()
+    with tracing.span("foodmind.message.persist_user") as span:
+        try:
+            await messages.create(
+                Message(conversation_id=chat_id, role="user", content=content)
+            )
+            # Do not hold a database transaction open while agents and LLMs run.
+            await session.commit()
+        except Exception:
+            span.set_attribute("foodmind.outcome", "error")
+            metrics.record_message_step(
+                step="persist_user_message",
+                outcome="error",
+                duration_seconds=perf_counter() - persistence_started,
+            )
+            raise
+        span.set_attribute("foodmind.outcome", "success")
+    metrics.record_message_step(
+        step="persist_user_message",
+        outcome="success",
+        duration_seconds=perf_counter() - persistence_started,
     )
-    # Do not hold a database transaction open while agents and LLMs run.
-    await session.commit()
     if event_callback is not None:
         await event_callback("user_message_persisted", {"chat_id": chat_id})
     dependencies = OrchestratorDependencies.from_repositories(
@@ -166,32 +186,62 @@ async def _process_message(
         )
     )
     dependencies.event_callback = event_callback
-    try:
-        result = await resources.orchestrator.run(content, deps=dependencies)
-        if event_callback is not None:
-            await event_callback("orchestrator_completed", {})
-    except Exception as error:
-        logger.exception("FoodMind orchestrator failed for chat %s", chat_id)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to process the request",
-        ) from error
-
-    try:
-        assistant_message = await messages.create(
-            Message(
-                conversation_id=chat_id,
-                role="assistant",
-                content=result.output.answer,
-                agent_name=",".join(result.output.used_agents) or None,
+    orchestrator_started = perf_counter()
+    with tracing.span("foodmind.message.orchestrator") as span:
+        try:
+            result = await resources.orchestrator.run(content, deps=dependencies)
+            if event_callback is not None:
+                await event_callback("orchestrator_completed", {})
+        except Exception as error:
+            span.set_attribute("foodmind.outcome", "error")
+            metrics.record_message_step(
+                step="orchestrator",
+                outcome="error",
+                duration_seconds=perf_counter() - orchestrator_started,
             )
-        )
-        await session.commit()
-        if event_callback is not None:
-            await event_callback("assistant_message_persisted", {"chat_id": chat_id})
-    except Exception:
-        await session.rollback()
-        raise
+            logger.exception("FoodMind orchestrator failed for chat %s", chat_id)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Unable to process the request",
+            ) from error
+        span.set_attribute("foodmind.outcome", "success")
+    metrics.record_message_step(
+        step="orchestrator",
+        outcome="success",
+        duration_seconds=perf_counter() - orchestrator_started,
+    )
+
+    persistence_started = perf_counter()
+    with tracing.span("foodmind.message.persist_assistant") as span:
+        try:
+            assistant_message = await messages.create(
+                Message(
+                    conversation_id=chat_id,
+                    role="assistant",
+                    content=result.output.answer,
+                    agent_name=",".join(result.output.used_agents) or None,
+                )
+            )
+            await session.commit()
+            if event_callback is not None:
+                await event_callback(
+                    "assistant_message_persisted", {"chat_id": chat_id}
+                )
+        except Exception:
+            await session.rollback()
+            span.set_attribute("foodmind.outcome", "error")
+            metrics.record_message_step(
+                step="persist_assistant_message",
+                outcome="error",
+                duration_seconds=perf_counter() - persistence_started,
+            )
+            raise
+        span.set_attribute("foodmind.outcome", "success")
+    metrics.record_message_step(
+        step="persist_assistant_message",
+        outcome="success",
+        duration_seconds=perf_counter() - persistence_started,
+    )
     return ChatAnswerResponse(
         chat_id=chat_id,
         message_id=assistant_message.id,
@@ -328,14 +378,17 @@ async def upsert_message_feedback(
         ):
             raise HTTPException(status_code=404, detail="Assistant message not found")
 
-        feedback = await FeedbackRepository(session).upsert(
-            Feedback(
-                message_id=message_id,
-                user_id=payload.user_id,
-                is_useful=payload.is_useful,
+        with tracing.span("foodmind.feedback.upsert") as span:
+            feedback = await FeedbackRepository(session).upsert(
+                Feedback(
+                    message_id=message_id,
+                    user_id=payload.user_id,
+                    is_useful=payload.is_useful,
+                )
             )
-        )
-        await session.commit()
+            await session.commit()
+            span.set_attribute("foodmind.outcome", "success")
+        metrics.record_feedback(is_useful=payload.is_useful)
         return FeedbackResponse(
             id=feedback.id,
             message_id=feedback.message_id,
