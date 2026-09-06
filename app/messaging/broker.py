@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Final
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from app.messaging.models import (
     ChatCommand,
     ChatExecutionEvent,
 )
+from app.observability import metrics
 
 
 CHAT_COMMAND_SUBJECT: Final = "foodmind.chat.commands"
@@ -49,7 +51,17 @@ class ChatCommandBroker:
 
     async def publish(self, command: ChatCommand) -> None:
         """Publish a command without waiting for worker execution."""
-        await self._broker.publish(command, CHAT_COMMAND_SUBJECT)
+        started = perf_counter()
+        try:
+            await self._broker.publish(command, CHAT_COMMAND_SUBJECT)
+        except Exception:
+            metrics.record_nats_command(
+                outcome="error", duration_seconds=perf_counter() - started
+            )
+            raise
+        metrics.record_nats_command(
+            outcome="success", duration_seconds=perf_counter() - started
+        )
 
     @asynccontextmanager
     async def submit(
@@ -58,14 +70,19 @@ class ChatCommandBroker:
         """Publish a command and yield its in-process event queue."""
         queue: asyncio.Queue[ChatExecutionEvent] = asyncio.Queue()
         self._queues[command.execution_id] = queue
+        metrics.set_nats_active_streams(len(self._queues))
         try:
             await self.publish(command)
             yield queue
         finally:
             self._queues.pop(command.execution_id, None)
+            metrics.set_nats_active_streams(len(self._queues))
 
     async def _route_event(self, event: ChatExecutionEvent) -> None:
         """Deliver an event only to the HTTP request that owns its command."""
+        metrics.record_nats_event(
+            direction="received", event=event.event.value, outcome="success"
+        )
         queue = self._queues.get(event.execution_id)
         if queue is not None:
             await queue.put(event)

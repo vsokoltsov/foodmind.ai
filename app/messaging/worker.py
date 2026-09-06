@@ -3,6 +3,7 @@
 import json
 import logging
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any
 
 from elasticsearch import AsyncElasticsearch
@@ -18,6 +19,7 @@ from app.messaging.broker import (
     CHAT_EVENT_SUBJECT,
 )
 from app.messaging.models import ChatCommand, ChatEventName, ChatExecutionEvent
+from app.observability import metrics
 from app.observability.tracing import tracing
 from app.services.chat_processor import ChatProcessor
 from app.settings import get_settings
@@ -73,13 +75,22 @@ async def _publish_event(
     command: ChatCommand, event: ChatEventName, data: dict[str, Any]
 ) -> None:
     """Publish one correlated worker event for the API SSE relay."""
-    await broker.publish(
-        ChatExecutionEvent(
-            execution_id=command.execution_id,
-            event=event,
-            data=_json_data(data),
-        ),
-        CHAT_EVENT_SUBJECT,
+    try:
+        await broker.publish(
+            ChatExecutionEvent(
+                execution_id=command.execution_id,
+                event=event,
+                data=_json_data(data),
+            ),
+            CHAT_EVENT_SUBJECT,
+        )
+    except Exception:
+        metrics.record_nats_event(
+            direction="published", event=event.value, outcome="error"
+        )
+        raise
+    metrics.record_nats_event(
+        direction="published", event=event.value, outcome="success"
     )
 
 
@@ -91,6 +102,8 @@ async def _publish_event(
 )
 async def process_chat_command(command: ChatCommand) -> None:
     """Process one durable command and publish execution events and its result."""
+    started = perf_counter()
+    metrics.worker_commands_in_progress.inc()
     try:
         processor = await resources.get_processor()
 
@@ -100,17 +113,25 @@ async def process_chat_command(command: ChatCommand) -> None:
         result = await processor.process(command, publish_progress)
     except Exception:
         logger.exception("Chat command %s failed", command.execution_id)
+        metrics.record_worker_command(
+            outcome="error", duration_seconds=perf_counter() - started
+        )
         await _publish_event(
             command,
             ChatEventName.ERROR,
             {"message": "Unable to process the request"},
         )
-        return
-    await _publish_event(
-        command,
-        ChatEventName.COMPLETED,
-        {"result": result.model_dump(mode="json")},
-    )
+    else:
+        metrics.record_worker_command(
+            outcome="success", duration_seconds=perf_counter() - started
+        )
+        await _publish_event(
+            command,
+            ChatEventName.COMPLETED,
+            {"result": result.model_dump(mode="json")},
+        )
+    finally:
+        metrics.worker_commands_in_progress.dec()
 
 
 @app.on_shutdown

@@ -100,6 +100,39 @@ class Metrics:
             "Number of feedback submissions, including replacements.",
             ["is_useful"],
         )
+        self.nats_commands = Counter(
+            "foodmind_nats_commands",
+            "Number of chat commands published to NATS.",
+            ["outcome"],
+        )
+        self.nats_command_duration = Histogram(
+            "foodmind_nats_command_duration_seconds",
+            "Duration of publishing a chat command to NATS.",
+            ["outcome"],
+        )
+        self.nats_events = Counter(
+            "foodmind_nats_events",
+            "Number of NATS execution events published or received.",
+            ["direction", "event", "outcome"],
+        )
+        self.nats_active_streams = Gauge(
+            "foodmind_nats_active_streams",
+            "Number of active API SSE streams awaiting NATS events.",
+        )
+        self.worker_commands = Counter(
+            "foodmind_chat_worker_commands",
+            "Number of chat commands handled by the worker.",
+            ["outcome"],
+        )
+        self.worker_command_duration = Histogram(
+            "foodmind_chat_worker_command_duration_seconds",
+            "End-to-end duration of one worker command.",
+            ["outcome"],
+        )
+        self.worker_commands_in_progress = Gauge(
+            "foodmind_chat_worker_commands_in_progress",
+            "Number of chat commands currently being processed by a worker.",
+        )
 
     def record_api_request(
         self, *, method: str, path: str, status: int, duration_seconds: float
@@ -200,6 +233,24 @@ class Metrics:
     def record_feedback(self, *, is_useful: bool) -> None:
         """Record one user feedback submission."""
         self.feedback_submissions.labels(is_useful=str(is_useful).lower()).inc()
+
+    def record_nats_command(self, *, outcome: str, duration_seconds: float) -> None:
+        """Record one command publication to the NATS broker."""
+        self.nats_commands.labels(outcome=outcome).inc()
+        self.nats_command_duration.labels(outcome=outcome).observe(duration_seconds)
+
+    def record_nats_event(self, *, direction: str, event: str, outcome: str) -> None:
+        """Record a worker event crossing the API/NATS boundary."""
+        self.nats_events.labels(direction=direction, event=event, outcome=outcome).inc()
+
+    def set_nats_active_streams(self, count: int) -> None:
+        """Set the number of connected SSE streams awaiting worker events."""
+        self.nats_active_streams.set(count)
+
+    def record_worker_command(self, *, outcome: str, duration_seconds: float) -> None:
+        """Record a completed worker command and its duration."""
+        self.worker_commands.labels(outcome=outcome).inc()
+        self.worker_command_duration.labels(outcome=outcome).observe(duration_seconds)
 
 
 metrics = Metrics()
