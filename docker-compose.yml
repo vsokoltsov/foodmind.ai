@@ -85,6 +85,34 @@ services:
       retries: 10
     restart: unless-stopped
 
+  nats:
+    image: nats:2.11-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  nats-ui:
+    image: ghcr.io/nats-nui/nui:latest
+    command: ["--nats-cli-contexts=/nats-contexts"]
+    ports:
+      - "31311:31311"
+    volumes:
+      - nats-ui-data:/db
+      - ./infra/nats/contexts:/nats-contexts:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   kestra:
     image: foodmind-kestra:${KESTRA_VERSION:-latest}
     build:
@@ -110,7 +138,7 @@ services:
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
       EVALUATION_ARTIFACT_BUCKET: ${EVALUATION_ARTIFACT_BUCKET:-}
       EVALUATION_ARTIFACT_PREFIX: ${EVALUATION_ARTIFACT_PREFIX:-foodmind/evaluation}
-      GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/gcp/gcp.json
+      GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/gcp/service-account.json
       KESTRA_BASIC_AUTH_USERNAME: ${KESTRA_BASIC_AUTH_USERNAME:-admin@foodmind.local}
       KESTRA_BASIC_AUTH_PASSWORD: ${KESTRA_BASIC_AUTH_PASSWORD:-Foodmind123}
     expose:
@@ -120,7 +148,7 @@ services:
       - kestra-data:/app/storage
       - kestra-dlt-data:/dlt
       - ./data:/data
-      - ./gcp.json:/var/secrets/gcp/gcp.json:ro
+      - ./gcp.json:/var/secrets/gcp/service-account.json:ro
       - ./:/workspace:ro
       - ./infra/kestra/application.yaml:/etc/kestra/application.yaml:ro
       - ./infra/kestra/flows:/app/flows:ro
@@ -150,10 +178,12 @@ services:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       DATABASE_URL: ${API_DATABASE_URL}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      NATS_URL: nats://nats:4222
     command: ["python", "cmd/api.py"]
     volumes:
       - ./app:/app/app:ro
       - ./cmd:/app/cmd:ro
+      - ./gcp.json:/var/secrets/gcp/service-account.json:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -163,9 +193,48 @@ services:
         condition: service_completed_successfully
       tempo:
         condition: service_started
+      nats:
+        condition: service_healthy
+      chat-worker:
+        condition: service_healthy
     healthcheck:
       test:
         ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  chat-worker:
+    image: foodmind-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env
+    environment:
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      DATABASE_URL: ${API_DATABASE_URL}
+      NATS_URL: nats://nats:4222
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+    command: ["faststream", "run", "app.messaging.worker:app", "--reload", "--app-dir", "/app"]
+    expose:
+      - "9100"
+    volumes:
+      - ./app:/app/app:ro
+      - ./gcp.json:/var/secrets/gcp/service-account.json:ro
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+      run-migrations:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:9100/metrics')\""]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -288,3 +357,5 @@ volumes:
   grafana-data:
   tempo-data:
   nicegui-data:
+  nats-data:
+  nats-ui-data:

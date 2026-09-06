@@ -1,0 +1,4 @@
+{
+  "description": "FoodMind local JetStream",
+  "url": "nats://nats:4222"
+}

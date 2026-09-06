@@ -11,3 +11,7 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["api:8000"]
+
+  - job_name: foodmind-chat-worker
+    static_configs:
+      - targets: ["chat-worker:9100"]
