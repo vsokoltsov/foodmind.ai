@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     OTEL_SERVICE_NAME: str = "foodmind-api"
     OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4318"
     OTEL_EXPORTER_OTLP_TIMEOUT_SECONDS: float = 10.0
+    NATS_URL: str = "nats://localhost:4222"
     INGESTION_ARTIFACT_STORAGE: Literal["local", "gcs"] = "local"
     GCS_BUCKET: str | None = None
     GCS_PREFIX: str = "foodmind/ingestion"
