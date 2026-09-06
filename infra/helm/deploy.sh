@@ -74,7 +74,7 @@ kubectl -n "${namespace}" create secret generic foodmind-runtime \
   --from-literal=EVALUATION_ARTIFACT_BUCKET="${evaluation_bucket}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-uv run python "${project_root}/cmd/generate_grafana_dashboards.py"
+make -C "${project_root}" grafana-dashboards
 helm upgrade --install foodmind "${chart_directory}" \
   --namespace "${namespace}" \
   --set-string images.api="${api_image}" \
