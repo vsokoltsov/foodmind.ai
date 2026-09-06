@@ -61,7 +61,7 @@ jobs:
       MODELS__SYNTHESIS__PROVIDER: vertex
       MODELS__SYNTHESIS__MODEL: gemini-2.5-flash-lite
       MODELS__EVALUATION_JUDGE__PROVIDER: openai
-      MODELS__EVALUATION_JUDGE__MODEL: gpt-5.0-mini
+      MODELS__EVALUATION_JUDGE__MODEL: gpt-5-mini
       MODELS__EMBEDDINGS__PROVIDER: vertex
       MODELS__EMBEDDINGS__MODEL: gemini-embedding-001
     strategy:

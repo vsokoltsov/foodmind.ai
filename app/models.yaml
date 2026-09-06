@@ -31,7 +31,7 @@ models:
 
   evaluation_judge:
     provider: openai
-    model: gpt-5.0-mini
+    model: gpt-5-mini
     timeout_seconds: 60
     max_output_tokens: 768
 
