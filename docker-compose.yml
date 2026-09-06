@@ -217,7 +217,7 @@ services:
       DATABASE_URL: ${API_DATABASE_URL}
       NATS_URL: nats://nats:4222
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-    command: ["faststream", "run", "app.messaging.worker:app", "--reload", "--app-dir", "/app"]
+    command: ["faststream", "run", "cmd.chat_worker:app", "--reload", "--app-dir", "/app"]
     expose:
       - "9100"
     volumes:
