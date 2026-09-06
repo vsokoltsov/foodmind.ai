@@ -9,5 +9,9 @@ COPY pyproject.toml uv.lock /opt/foodmind/
 RUN cd /opt/foodmind && uv sync --frozen --no-dev
 RUN /app/kestra plugins install io.kestra.plugin:plugin-script-shell:LATEST
 
-ENV PATH="/opt/foodmind/.venv/bin:${PATH}"
+COPY app /workspace/app
+COPY cmd /workspace/cmd
+COPY infra/kestra/flows /workspace/infra/kestra/flows
+
+ENV PATH="/opt/foodmind/.venv/bin:${PATH}" PYTHONPATH="/workspace"
 WORKDIR /workspace
