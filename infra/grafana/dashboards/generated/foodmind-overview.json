@@ -53,7 +53,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum by (method, path, status) (rate(foodmind_api_requests_total[$__rate_interval]))",
+                     "expr": "sum by (method, path, status) (rate(foodmind_api_requests_total{path!=\"/unmatched\"}[$__rate_interval]))",
                      "legendFormat": "{{method}} {{path}} · {{status}}",
                      "refId": "A"
                   }
@@ -92,7 +92,7 @@
                },
                "targets": [
                   {
-                     "expr": "histogram_quantile(0.95, sum by (le, method, path) (rate(foodmind_api_request_duration_seconds_bucket[$__rate_interval])))",
+                     "expr": "histogram_quantile(0.95, sum by (le, method, path) (rate(foodmind_api_request_duration_seconds_bucket{path!=\"/unmatched\"}[$__rate_interval])))",
                      "legendFormat": "{{method}} {{path}}",
                      "refId": "A"
                   }
@@ -131,7 +131,7 @@
                },
                "targets": [
                   {
-                     "expr": "sum(rate(foodmind_api_requests_total{status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(foodmind_api_requests_total[$__rate_interval])), 0.001)",
+                     "expr": "sum(rate(foodmind_api_requests_total{path!=\"/unmatched\",status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(foodmind_api_requests_total{path!=\"/unmatched\"}[$__rate_interval])), 0.001)",
                      "legendFormat": "5xx ratio",
                      "refId": "A"
                   }
@@ -1210,6 +1210,176 @@
             "x": 0,
             "y": 7
          },
+         "id": 750,
+         "panels": [
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+               },
+               "fieldConfig": {
+                  "defaults": {
+                     "unit": "s"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 0
+               },
+               "id": 33,
+               "options": {
+                  "legend": {
+                     "displayMode": "table",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "multi",
+                     "sort": "desc"
+                  }
+               },
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.95, sum by (le, step, outcome) (rate(foodmind_message_processing_step_duration_seconds_bucket{step=~\"load_conversation|load_history|build_context\"}[$__rate_interval])))",
+                     "legendFormat": "{{step}} · {{outcome}}",
+                     "refId": "A"
+                  }
+               ],
+               "title": "Context-building latency p95",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+               },
+               "fieldConfig": {
+                  "defaults": {
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 0
+               },
+               "id": 34,
+               "options": {
+                  "legend": {
+                     "displayMode": "table",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "multi",
+                     "sort": "desc"
+                  }
+               },
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.95, sum by (le) (rate(foodmind_conversation_context_messages_bucket[$__rate_interval])))",
+                     "legendFormat": "messages",
+                     "refId": "A"
+                  }
+               ],
+               "title": "Context messages p95",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+               },
+               "fieldConfig": {
+                  "defaults": {
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 0,
+                  "y": 8
+               },
+               "id": 35,
+               "options": {
+                  "legend": {
+                     "displayMode": "table",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "multi",
+                     "sort": "desc"
+                  }
+               },
+               "targets": [
+                  {
+                     "expr": "histogram_quantile(0.95, sum by (le) (rate(foodmind_conversation_context_characters_bucket[$__rate_interval])))",
+                     "legendFormat": "characters",
+                     "refId": "A"
+                  }
+               ],
+               "title": "Context characters p95",
+               "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "prometheus"
+               },
+               "fieldConfig": {
+                  "defaults": {
+                     "unit": "ops"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 8,
+                  "w": 12,
+                  "x": 12,
+                  "y": 8
+               },
+               "id": 36,
+               "options": {
+                  "legend": {
+                     "displayMode": "table",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "mode": "multi",
+                     "sort": "desc"
+                  }
+               },
+               "targets": [
+                  {
+                     "expr": "sum by (step, outcome) (rate(foodmind_message_processing_step_duration_seconds_count[$__rate_interval]))",
+                     "legendFormat": "{{step}} · {{outcome}}",
+                     "refId": "A"
+                  }
+               ],
+               "title": "Message-processing steps",
+               "type": "timeseries"
+            }
+         ],
+         "title": "Conversation context",
+         "type": "row"
+      },
+      {
+         "collapsed": true,
+         "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 8
+         },
          "id": 800,
          "panels": [
             {
@@ -1390,5 +1560,5 @@
    "timezone": "browser",
    "title": "FoodMind Operations",
    "uid": "foodmind-overview",
-   "version": 2
+   "version": 3
 }

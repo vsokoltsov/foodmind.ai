@@ -42,9 +42,9 @@ local row(id, title, panels, y) = {
   ],
   panels: [
     row(100, 'API', [
-      panel(1, 'Request rate', 'sum by (method, path, status) (rate(foodmind_api_requests_total[$__rate_interval]))', '{{method}} {{path}} · {{status}}', 0, 0, 'reqps'),
-      panel(2, 'Request latency p95', 'histogram_quantile(0.95, sum by (le, method, path) (rate(foodmind_api_request_duration_seconds_bucket[$__rate_interval])))', '{{method}} {{path}}', 12, 0, 's'),
-      panel(3, 'Server-error ratio', 'sum(rate(foodmind_api_requests_total{status=~"5.."}[$__rate_interval])) / clamp_min(sum(rate(foodmind_api_requests_total[$__rate_interval])), 0.001)', '5xx ratio', 0, 8, 'percentunit'),
+      panel(1, 'Request rate', 'sum by (method, path, status) (rate(foodmind_api_requests_total{path!="/unmatched"}[$__rate_interval]))', '{{method}} {{path}} · {{status}}', 0, 0, 'reqps'),
+      panel(2, 'Request latency p95', 'histogram_quantile(0.95, sum by (le, method, path) (rate(foodmind_api_request_duration_seconds_bucket{path!="/unmatched"}[$__rate_interval])))', '{{method}} {{path}}', 12, 0, 's'),
+      panel(3, 'Server-error ratio', 'sum(rate(foodmind_api_requests_total{path!="/unmatched",status=~"5.."}[$__rate_interval])) / clamp_min(sum(rate(foodmind_api_requests_total{path!="/unmatched"}[$__rate_interval])), 0.001)', '5xx ratio', 0, 8, 'percentunit'),
       panel(4, 'Requests in progress', 'sum by (method) (foodmind_api_requests_in_progress)', '{{method}}', 12, 8, 'short'),
     ], 0),
 
@@ -90,12 +90,19 @@ local row(id, title, panels, y) = {
       panel(28, 'Useful-feedback ratio', 'sum(increase(foodmind_feedback_submissions_total{is_useful="true"}[$__rate_interval])) / clamp_min(sum(increase(foodmind_feedback_submissions_total[$__rate_interval])), 1)', 'useful feedback ratio', 12, 0, 'percentunit'),
     ], 6),
 
+    row(750, 'Conversation context', [
+      panel(33, 'Context-building latency p95', 'histogram_quantile(0.95, sum by (le, step, outcome) (rate(foodmind_message_processing_step_duration_seconds_bucket{step=~"load_conversation|load_history|build_context"}[$__rate_interval])))', '{{step}} · {{outcome}}', 0, 0, 's'),
+      panel(34, 'Context messages p95', 'histogram_quantile(0.95, sum by (le) (rate(foodmind_conversation_context_messages_bucket[$__rate_interval])))', 'messages', 12, 0, 'short'),
+      panel(35, 'Context characters p95', 'histogram_quantile(0.95, sum by (le) (rate(foodmind_conversation_context_characters_bucket[$__rate_interval])))', 'characters', 0, 8, 'short'),
+      panel(36, 'Message-processing steps', 'sum by (step, outcome) (rate(foodmind_message_processing_step_duration_seconds_count[$__rate_interval]))', '{{step}} · {{outcome}}', 12, 8, 'ops'),
+    ], 7),
+
     row(800, 'Platform health', [
       panel(29, 'Prometheus scrape health', 'up{job=~"foodmind-api|foodmind-chat-worker"}', '{{job}}', 0, 0, 'short'),
       panel(30, 'Process resident memory', 'sum by (job) (process_resident_memory_bytes{job=~"foodmind-api|foodmind-chat-worker"})', '{{job}}', 12, 0, 'bytes'),
       panel(31, 'Python process CPU', 'sum by (job) (rate(process_cpu_seconds_total{job=~"foodmind-api|foodmind-chat-worker"}[$__rate_interval]))', '{{job}}', 0, 8, 'percentunit'),
       panel(32, 'Python open file descriptors', 'sum by (job) (process_open_fds{job=~"foodmind-api|foodmind-chat-worker"})', '{{job}}', 12, 8, 'short'),
-    ], 7),
+    ], 8),
   ],
   refresh: '30s',
   schemaVersion: 41,
@@ -105,5 +112,5 @@ local row(id, title, panels, y) = {
   timezone: 'browser',
   title: 'FoodMind Operations',
   uid: 'foodmind-overview',
-  version: 2,
+  version: 3,
 }
