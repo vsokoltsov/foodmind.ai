@@ -36,7 +36,7 @@ spec:
       containers:
         - name: chat-worker
           image: {{ required "images.api is required" .Values.images.api | quote }}
-          command: ["faststream", "run", "cmd/chat_worker.py:app", "--app-dir", "/app"]
+          command: ["faststream", "run", "cmd.chat_worker:app", "--app-dir", "/app"]
           ports: [{name: metrics, containerPort: 9100}]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
