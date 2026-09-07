@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/vsokoltsov/foodmind.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/vsokoltsov/foodmind.ai/actions/workflows/ci.yml)
 
+![](./docs/cover.png)
+
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![PydanticAI](https://img.shields.io/badge/PydanticAI-Agents-E92063)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
@@ -25,6 +27,8 @@
 FoodMind AI is an agentic food-intelligence application. It combines food knowledge from Wikidata, USDA FoodData Central, and Open Food Facts with Elasticsearch retrieval and specialist PydanticAI agents. Users can search foods, analyse nutrition, compare products, and receive constraint-aware recommendations in a persistent chat interface.
 
 ## 🧩 Problem statement
+
+![](./docs/infographic.png)
 
 Food data is distributed across sources with different strengths and schemas:
 
