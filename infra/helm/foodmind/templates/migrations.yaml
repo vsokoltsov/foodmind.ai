@@ -14,12 +14,18 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: foodmind
+      initContainers:
+        - name: cloud-sql-proxy
+          image: {{ .Values.images.cloudSqlProxy | quote }}
+          restartPolicy: Always
+          args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
+          startupProbe:
+            tcpSocket: {port: 5432}
+            periodSeconds: 1
+            failureThreshold: 30
+          securityContext: {runAsNonRoot: true}
       containers:
         - name: migrations
           image: {{ required "images.api is required" .Values.images.api | quote }}
           command: ["alembic", "upgrade", "head"]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
-        - name: cloud-sql-proxy
-          image: {{ .Values.images.cloudSqlProxy | quote }}
-          args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
-          securityContext: {runAsNonRoot: true}
