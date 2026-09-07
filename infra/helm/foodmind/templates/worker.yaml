@@ -26,6 +26,9 @@ spec:
   # an unschedulable surge pod on the one-node cluster during upgrades.
   strategy:
     type: Recreate
+    # Explicit null removes the rolling-update fields from the previous
+    # Deployment revision when Helm uses server-side apply.
+    rollingUpdate: null
   selector:
     matchLabels:
       {{- include "foodmind.selectorLabels" . | nindent 6 }}
