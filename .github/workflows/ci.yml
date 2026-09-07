@@ -178,6 +178,9 @@ jobs:
 
       - uses: azure/setup-helm@v4
 
+      - name: Install Jsonnet
+        run: sudo apt-get update && sudo apt-get install --yes jsonnet
+
       - name: Load runtime secrets from Secret Manager
         shell: bash
         run: |
