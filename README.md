@@ -62,6 +62,14 @@ The source data is intentionally heterogeneous. Missing fields and inconsistent 
 - Evaluate retrieval and LLM output, persist evaluation artifacts, and load the selected retrieval approach at runtime.
 - Monitor the API, worker, agents, NATS, feedback, token use, and traces with Prometheus, Grafana, and Tempo.
 
+## 🎨 UI
+
+![](./docs/ui_1.gif)
+
+![](./docs/ui_2.gif)
+
+![](./docs/ui_3.gif)
+
 ## 🏗️ Architecture
 
 ### 🌍 Global
