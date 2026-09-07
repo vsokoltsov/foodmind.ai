@@ -6,12 +6,21 @@
 ![PydanticAI](https://img.shields.io/badge/PydanticAI-Agents-E92063)
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
 ![NiceGUI](https://img.shields.io/badge/NiceGUI-UI-2F855A)
+![OpenAI](https://img.shields.io/badge/OpenAI-Models-412991?logo=openai&logoColor=white)
+![Gemini](https://img.shields.io/badge/Google_Gemini-Models-4285F4?logo=googlegemini&logoColor=white)
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-Retrieval-005571?logo=elasticsearch&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Chat-4169E1?logo=postgresql&logoColor=white)
+![dlt](https://img.shields.io/badge/dlt-Ingestion-F5CD21)
 ![NATS](https://img.shields.io/badge/NATS-JetStream-27AAE1)
 ![FastStream](https://img.shields.io/badge/FastStream-Messaging-8B5CF6)
 ![Kestra](https://img.shields.io/badge/Kestra-Orchestration-FF6B6B)
 ![Grafana](https://img.shields.io/badge/Grafana-Observability-F46800?logo=grafana&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-GKE-326CE5?logo=kubernetes&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-Deployments-0F1689?logo=helm&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-Infrastructure-7B42BC?logo=terraform&logoColor=white)
+![Google Cloud](https://img.shields.io/badge/Google_Cloud-Platform-4285F4?logo=googlecloud&logoColor=white)
 
 FoodMind AI is an agentic food-intelligence application. It combines food knowledge from Wikidata, USDA FoodData Central, and Open Food Facts with Elasticsearch retrieval and specialist PydanticAI agents. Users can search foods, analyse nutrition, compare products, and receive constraint-aware recommendations in a persistent chat interface.
 
