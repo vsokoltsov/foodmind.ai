@@ -130,32 +130,6 @@ jobs:
           EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
         run: make ${{ matrix.target }}
 
-  changes:
-    name: Detect release-relevant changes
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.filter.outputs.release }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            release:
-              - 'app/**'
-              - 'cmd/**'
-              - '.github/workflows/**'
-              - '.github/actions/**'
-              - 'infra/deploy/**'
-              - 'infra/kestra/**'
-              - 'infra/helm/**'
-              - 'Dockerfile.api'
-              - 'Dockerfile.python-base'
-              - 'Dockerfile.kestra'
-              - 'Dockerfile.ui'
-              - 'pyproject.toml'
-              - 'uv.lock'
-
   build-dependencies:
     name: Build Python dependency image
     needs: [quality, tests, evaluation]
@@ -250,8 +224,7 @@ jobs:
 
   deploy-bootstrap:
     name: Deploy bootstrap and database migrations
-    needs: [build-images, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: build-images
     permissions:
       contents: read
       id-token: write
@@ -263,8 +236,7 @@ jobs:
 
   deploy-nats:
     name: Deploy NATS
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -276,8 +248,7 @@ jobs:
 
   deploy-observability:
     name: Deploy Prometheus and Tempo
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -289,8 +260,7 @@ jobs:
 
   prepare-grafana-dashboards:
     name: Prepare Grafana dashboards
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -313,8 +283,7 @@ jobs:
 
   deploy-grafana:
     name: Deploy Grafana
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -326,8 +295,7 @@ jobs:
 
   deploy-kestra:
     name: Deploy Kestra and synchronize flows
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -339,8 +307,7 @@ jobs:
 
   deploy-api:
     name: Deploy API
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -352,8 +319,7 @@ jobs:
 
   deploy-worker:
     name: Deploy chat worker
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
@@ -365,8 +331,7 @@ jobs:
 
   deploy-ui:
     name: Deploy Cloud Run UI
-    needs: [deploy-bootstrap, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+    needs: deploy-bootstrap
     permissions:
       contents: read
       id-token: write
