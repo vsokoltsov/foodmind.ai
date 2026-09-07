@@ -22,6 +22,10 @@ metadata:
     app.kubernetes.io/component: worker
 spec:
   replicas: {{ .Values.worker.replicas }}
+  # The worker is single-replica and consumes a durable command stream. Avoid
+  # an unschedulable surge pod on the one-node cluster during upgrades.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "foodmind.selectorLabels" . | nindent 6 }}

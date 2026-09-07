@@ -32,6 +32,9 @@ kind: Deployment
 metadata: {name: kestra}
 spec:
   replicas: 1
+  # Kestra is single-replica; replacing it first prevents a rollout deadlock
+  # when the GKE development node has no spare CPU.
+  strategy: {type: Recreate}
   selector: {matchLabels: {app.kubernetes.io/component: kestra}}
   template:
     metadata: {labels: {app.kubernetes.io/component: kestra}}
@@ -40,7 +43,9 @@ spec:
       containers:
         - name: kestra
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
-          command: ["/app/kestra", "server", "standalone", "--config", "/etc/kestra/application.yaml", "--plugins", "/app/plugins"]
+          # Keep Kestra's image entrypoint (docker-entrypoint.sh). It prepares
+          # the launcher before executing these server arguments.
+          args: ["server", "standalone", "--config", "/etc/kestra/application.yaml", "--plugins", "/app/plugins"]
           ports: [{name: http, containerPort: 8080}, {name: management, containerPort: 8081}]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
