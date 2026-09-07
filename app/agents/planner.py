@@ -1,8 +1,10 @@
 """Structured planning agent for FoodMind multi-agent workflows."""
 
+import asyncio
 from dataclasses import dataclass, field
 from enum import StrEnum
 
+import httpx2
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent, AgentRunResult
 from app.aggregates.model_configuration import ModelRole
@@ -80,10 +82,16 @@ class FoodMindPlanner:
     """Convert a natural-language request into a validated execution plan."""
 
     instructions: str | None = None
+    max_transport_attempts: int = 3
+    retry_base_delay_seconds: float = 1.0
     agent: Agent[None, ExecutionPlan] = field(init=False)
 
     def __post_init__(self) -> None:
         """Create the structured-output planning agent."""
+        if self.max_transport_attempts < 1:
+            raise ValueError("max_transport_attempts must be at least one")
+        if self.retry_base_delay_seconds <= 0:
+            raise ValueError("retry_base_delay_seconds must be greater than zero")
         settings = get_settings()
         factory = ModelFactory(settings)
         model = factory.build(ModelRole.PLANNER)
@@ -108,7 +116,7 @@ class FoodMindPlanner:
         model = ModelFactory(settings).name_for(ModelRole.PLANNER)
         with tracing.span("foodmind.llm.planner") as span:
             try:
-                result = await self.agent.run(prompt)
+                result = await self._run_with_transport_retries(prompt)
             except Exception:
                 span.set_attribute("foodmind.outcome", "error")
                 metrics.record_llm_failure(
@@ -126,3 +134,21 @@ class FoodMindPlanner:
             usage=result.usage,
         )
         return result
+
+    async def _run_with_transport_retries(
+        self, prompt: str
+    ) -> AgentRunResult[ExecutionPlan]:
+        """Run the planner again after transient network failures.
+
+        Vertex AI requests may occasionally fail while establishing a connection.
+        Retrying only transport errors preserves failures caused by invalid model
+        configuration, credentials, or invalid structured model output.
+        """
+        for attempt in range(self.max_transport_attempts):
+            try:
+                return await self.agent.run(prompt)
+            except httpx2.TransportError:
+                if attempt == self.max_transport_attempts - 1:
+                    raise
+                await asyncio.sleep(self.retry_base_delay_seconds * (2**attempt))
+        raise RuntimeError("Planner transport retry loop completed unexpectedly")
