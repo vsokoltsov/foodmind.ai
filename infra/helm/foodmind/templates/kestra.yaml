@@ -32,13 +32,13 @@ kind: Deployment
 metadata: {name: kestra}
 spec:
   replicas: 1
-  # Kestra is single-replica; replacing it first prevents a rollout deadlock
-  # when the GKE development node has no spare CPU.
+  # Kestra is single-replica. Disallow a surge pod so its replacement fits on
+  # the low-cost one-node GKE cluster.
   strategy:
-    type: Recreate
-    # Explicit null removes the rolling-update fields from the previous
-    # Deployment revision when Helm uses server-side apply.
-    rollingUpdate: null
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector: {matchLabels: {app.kubernetes.io/component: kestra}}
   template:
     metadata: {labels: {app.kubernetes.io/component: kestra}}
