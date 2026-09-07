@@ -249,6 +249,9 @@ jobs:
     name: Deploy bootstrap and database migrations
     needs: [build-images, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: bootstrap
@@ -259,6 +262,9 @@ jobs:
     name: Deploy NATS
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: nats
@@ -269,6 +275,9 @@ jobs:
     name: Deploy Prometheus and Tempo
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: observability
@@ -303,6 +312,9 @@ jobs:
     name: Deploy Grafana
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: grafana
@@ -313,6 +325,9 @@ jobs:
     name: Deploy Kestra and synchronize flows
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: kestra
@@ -323,6 +338,9 @@ jobs:
     name: Deploy API
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: api
@@ -333,6 +351,9 @@ jobs:
     name: Deploy chat worker
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: worker
@@ -343,6 +364,9 @@ jobs:
     name: Deploy Cloud Run UI
     needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/deploy-ui.yml
     with:
       image_tag: ${{ github.sha }}
