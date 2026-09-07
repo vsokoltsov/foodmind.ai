@@ -1,3 +1,4 @@
+{{- if or (eq .Values.component "all") (eq .Values.component "grafana") }}
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: grafana-provisioning}
@@ -72,3 +73,4 @@ spec:
         - {name: provisioning, configMap: {name: grafana-provisioning}}
         - {name: dashboard, configMap: {name: grafana-dashboard-foodmind-overview}}
         - {name: data, persistentVolumeClaim: {claimName: grafana-data}}
+{{- end }}

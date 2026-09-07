@@ -1,3 +1,4 @@
+{{- if or (eq .Values.component "all") (eq .Values.component "bootstrap") }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -5,8 +6,9 @@ metadata:
   labels:
     {{- include "foodmind.labels" . | nindent 4 }}
   annotations:
-    helm.sh/hook: pre-install,pre-upgrade
-    helm.sh/hook-weight: "-5"
+    # The service account is a regular chart resource so it can be adopted
+    # from the legacy release. Run migrations after that resource exists.
+    helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 4
@@ -29,3 +31,4 @@ spec:
           image: {{ required "images.api is required" .Values.images.api | quote }}
           command: ["alembic", "upgrade", "head"]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
+{{- end }}

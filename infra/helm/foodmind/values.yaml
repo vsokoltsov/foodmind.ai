@@ -8,6 +8,10 @@ images:
   tempo: grafana/tempo:2.8.2
   cloudSqlProxy: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.19.0
 
+# Selects the part of the chart rendered by a component release.  "all" keeps
+# local, single-release development compatible with the original deployment.
+component: all
+
 runtimeSecretName: foodmind-runtime
 gcpServiceAccount: ""
 cloudSql:

@@ -1,3 +1,4 @@
+{{- if or (eq .Values.component "all") (eq .Values.component "kestra") }}
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: kestra-config}
@@ -75,3 +76,4 @@ spec:
           args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
           securityContext: {runAsNonRoot: true}
       volumes: [{name: config, configMap: {name: kestra-config}}]
+{{- end }}

@@ -1,4 +1,4 @@
-{{- if .Values.public.apiEnabled }}
+{{- if and (or (eq .Values.component "all") (eq .Values.component "api")) .Values.public.apiEnabled }}
 {{- if .Values.public.apiHost }}
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate

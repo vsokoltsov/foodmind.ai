@@ -7,6 +7,15 @@
 # remain an explicit, reviewable operation.
 set -euo pipefail
 
+component="${1:-all}"
+case "${component}" in
+  all|bootstrap|nats|observability|grafana|kestra|api|worker) ;;
+  *)
+    echo "Unknown component '${component}'. Expected all, bootstrap, nats, observability, grafana, kestra, api, or worker." >&2
+    exit 2
+    ;;
+esac
+
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 terraform_directory="${project_root}/infra/terraform"
 chart_directory="${project_root}/infra/helm/foodmind"
@@ -46,9 +55,6 @@ elasticsearch_endpoint="$(value_from_environment_or_terraform ELASTICSEARCH_ENDP
 elasticsearch_username="$(value_from_environment_or_terraform ELASTICSEARCH_USERNAME elasticsearch_username)"
 elasticsearch_password="$(value_from_environment_or_terraform ELASTICSEARCH_PASSWORD elasticsearch_password)"
 gcs_bucket="$(value_from_environment_or_terraform GCS_BUCKET artifact_bucket_name)"
-api_public_ip="$(value_from_environment_or_terraform API_PUBLIC_IP api_public_ip)"
-kestra_public_ip="$(value_from_environment_or_terraform KESTRA_PUBLIC_IP kestra_public_ip)"
-nats_ui_public_ip="$(value_from_environment_or_terraform NATS_UI_PUBLIC_IP nats_ui_public_ip)"
 evaluation_bucket="${EVALUATION_ARTIFACT_BUCKET:-$(tf_output evaluation_artifact_bucket_name 2>/dev/null || true)}"
 openai_key="${OPENAI_API_KEY:-$(gcloud secrets versions access latest --secret=OPENAI_API_KEY --project="${project_id}")}"
 
@@ -60,8 +66,18 @@ fi
 api_image="${repository}/api:${image_tag}"
 kestra_image="${repository}/kestra:${image_tag}"
 
+case "${component}" in
+  all) release_name="foodmind" ;;
+  *) release_name="foodmind-${component}" ;;
+esac
+
 gcloud container clusters get-credentials "${cluster}" --region "${region}" --project "${project_id}"
 kubectl create namespace "${namespace}" --dry-run=client -o yaml | kubectl apply -f -
+
+# The regional addresses are provisioned by Terraform. CI can resolve them
+# directly instead of needing read access to the Terraform state.
+kestra_public_ip="${KESTRA_PUBLIC_IP:-$(gcloud compute addresses describe "${cluster}-kestra-ip" --region "${region}" --project "${project_id}" --format='value(address)')}"
+nats_ui_public_ip="${NATS_UI_PUBLIC_IP:-$(gcloud compute addresses describe "${cluster}-nats-ui-ip" --region "${region}" --project "${project_id}" --format='value(address)')}"
 
 database_url="postgresql+psycopg://foodmind:${foodmind_password}@127.0.0.1:5432/foodmind"
 kestra_database_url="postgresql+psycopg://kestra:${kestra_password}@127.0.0.1:5432/kestra"
@@ -80,9 +96,9 @@ kubectl -n "${namespace}" create secret generic foodmind-runtime \
   --from-literal=EVALUATION_ARTIFACT_BUCKET="${evaluation_bucket}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-make -C "${project_root}" grafana-dashboards
-helm upgrade --install foodmind "${chart_directory}" \
+helm upgrade --install "${release_name}" "${chart_directory}" \
   --namespace "${namespace}" \
+  --set-string component="${component}" \
   --set-string images.api="${api_image}" \
   --set-string images.kestra="${kestra_image}" \
   --set-string cloudSql.instanceConnectionName="${cloud_sql}" \
@@ -93,4 +109,9 @@ helm upgrade --install foodmind "${chart_directory}" \
   --set-string public.natsUiLoadBalancerIp="${nats_ui_public_ip}" \
   --set-string public.kestraUrl="http://${kestra_public_ip}/" \
   --set-string kestra.basicAuthUsername="${kestra_basic_auth_username}" \
+  --take-ownership \
   --wait --timeout 15m
+
+if [[ "${component}" != "all" ]]; then
+  echo "Deployed ${component} as Helm release ${release_name}."
+fi

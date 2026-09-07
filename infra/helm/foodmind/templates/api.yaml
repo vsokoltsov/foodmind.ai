@@ -1,3 +1,4 @@
+{{- if or (eq .Values.component "all") (eq .Values.component "api") }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -58,3 +59,4 @@ spec:
           image: {{ .Values.images.cloudSqlProxy | quote }}
           args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
           securityContext: {runAsNonRoot: true}
+{{- end }}
