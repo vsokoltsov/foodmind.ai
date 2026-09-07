@@ -176,6 +176,11 @@ jobs:
         with:
           enable-cache: true
 
+      # infra/helm/deploy.sh reads provisioned addresses and credentials from
+      # the Terraform remote state when they are not supplied as CI variables.
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - uses: azure/setup-helm@v4
 
       - name: Install Jsonnet
