@@ -147,78 +147,79 @@ jobs:
               - 'infra/kestra/**'
               - 'infra/helm/**'
               - 'Dockerfile.api'
+              - 'Dockerfile.python-base'
               - 'Dockerfile.kestra'
               - 'Dockerfile.ui'
               - 'pyproject.toml'
               - 'uv.lock'
 
-  build-images:
-    name: Build images
+  build-dependencies:
+    name: Build Python dependency image
     needs: [quality, tests, evaluation]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     outputs:
-      image_tag: ${{ steps.image-metadata.outputs.image_tag }}
-      image_artifact: ${{ steps.image-metadata.outputs.image_artifact }}
+      python_base_image: ${{ steps.image-metadata.outputs.python_base_image }}
     env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-      IMAGE_TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
       - id: image-metadata
-        name: Define image metadata
+        name: Define dependency image tag
         run: |
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "image_artifact=foodmind-images-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          dependency_hash="$(sha256sum uv.lock | cut -c1-16)"
+          echo "python_base_image=${ARTIFACT_REGISTRY_REPOSITORY}/python-dependencies:${dependency_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Exposes the GitHub cache service credentials needed by direct
-      # `docker buildx build --cache-to/from type=gha` invocations.
       - name: Expose GitHub Actions cache service
         uses: crazy-max/ghaction-github-runtime@v4
 
-      - name: Build images
-        run: infra/deploy/build-images.sh build
+      - name: Build and publish dependency image
+        env:
+          PYTHON_BASE_IMAGE: ${{ steps.image-metadata.outputs.python_base_image }}
+          PUSH_DEPENDENCY_IMAGE: "true"
+        run: infra/deploy/build-images.sh dependencies
 
-      - name: Export images
-        run: |
-          docker save \
-            "${ARTIFACT_REGISTRY_REPOSITORY}/api:${IMAGE_TAG}" \
-            "${ARTIFACT_REGISTRY_REPOSITORY}/kestra:${IMAGE_TAG}" \
-            "${ARTIFACT_REGISTRY_REPOSITORY}/ui:${IMAGE_TAG}" \
-            "${ARTIFACT_REGISTRY_REPOSITORY}/ui:latest" \
-            -o foodmind-images.tar
-
-      - name: Upload images
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.image-metadata.outputs.image_artifact }}
-          path: foodmind-images.tar
-          compression-level: 0
-          retention-days: 1
-
-  push-images:
-    name: Push images
-    needs: [build-images, changes]
-    if: ${{ needs.changes.outputs.release == 'true' }}
+  build-images:
+    name: Build and publish ${{ matrix.component }} image
+    needs: build-dependencies
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+          - component: kestra
+          - component: ui
     permissions:
       contents: read
       id-token: write
-    outputs:
-      image_tag: ${{ needs.build-images.outputs.image_tag }}
     env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-      IMAGE_TAG: ${{ needs.build-images.outputs.image_tag }}
+      IMAGE_TAG: ${{ github.sha }}
+      PYTHON_BASE_IMAGE: ${{ needs.build-dependencies.outputs.python_base_image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -230,25 +231,28 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Download images
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.build-images.outputs.image_artifact }}
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 
-      - name: Import images
-        run: docker load --input foodmind-images.tar
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push images
-        run: infra/deploy/build-images.sh push
+      # Exposes the GitHub cache service credentials needed by direct
+      # `docker buildx build --cache-to/from type=gha` invocations.
+      - name: Expose GitHub Actions cache service
+        uses: crazy-max/ghaction-github-runtime@v4
+
+      - name: Build and publish ${{ matrix.component }} image
+        run: infra/deploy/build-images.sh publish-${{ matrix.component }}
 
   deploy-bootstrap:
     name: Deploy bootstrap and database migrations
-    needs: [push-images, changes]
+    needs: [build-images, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: bootstrap
-      image_tag: ${{ needs.push-images.outputs.image_tag }}
+      image_tag: ${{ github.sha }}
     secrets: inherit
 
   deploy-nats:
