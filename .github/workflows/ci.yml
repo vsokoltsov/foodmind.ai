@@ -130,10 +130,89 @@ jobs:
           EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
         run: make ${{ matrix.target }}
 
-  deploy:
-    name: Build and deploy Helm release
+  build-images:
+    name: Build images
     needs: [quality, tests, evaluation]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ steps.image-metadata.outputs.image_tag }}
+      image_artifact: ${{ steps.image-metadata.outputs.image_artifact }}
+    env:
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: image-metadata
+        name: Define image metadata
+        run: |
+          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_artifact=foodmind-images-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build images
+        run: infra/deploy/build-images.sh build
+
+      - name: Export images
+        run: |
+          docker save \
+            "${ARTIFACT_REGISTRY_REPOSITORY}/api:${IMAGE_TAG}" \
+            "${ARTIFACT_REGISTRY_REPOSITORY}/kestra:${IMAGE_TAG}" \
+            "${ARTIFACT_REGISTRY_REPOSITORY}/ui:${IMAGE_TAG}" \
+            "${ARTIFACT_REGISTRY_REPOSITORY}/ui:latest" \
+            -o foodmind-images.tar
+
+      - name: Upload images
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.image-metadata.outputs.image_artifact }}
+          path: foodmind-images.tar
+          compression-level: 0
+          retention-days: 1
+
+  push-images:
+    name: Push images
+    needs: build-images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_tag: ${{ needs.build-images.outputs.image_tag }}
+    env:
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      IMAGE_TAG: ${{ needs.build-images.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download images
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-images.outputs.image_artifact }}
+
+      - name: Import images
+        run: docker load --input foodmind-images.tar
+
+      - name: Push images
+        run: infra/deploy/build-images.sh push
+
+  deploy:
+    name: Deploy Helm release
+    needs: push-images
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -154,7 +233,7 @@ jobs:
       ELASTICSEARCH_ENDPOINT: ${{ vars.ELASTICSEARCH_ENDPOINT }}
       ELASTICSEARCH_USERNAME: ${{ vars.ELASTICSEARCH_USERNAME }}
       API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
-      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_TAG: ${{ needs.push-images.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -194,14 +273,6 @@ jobs:
             echo "::add-mask::${secret_value}"
             echo "${secret_name}=${secret_value}" >> "${GITHUB_ENV}"
           done
-
-      # Steps in the same job share the runner's Docker daemon and the IMAGE_TAG
-      # job environment, so no image artifact transfer is required.
-      - name: Build images
-        run: infra/deploy/build-images.sh build
-
-      - name: Push images
-        run: infra/deploy/build-images.sh push
 
       - name: Install application dependencies
         run: uv sync --frozen --no-dev
