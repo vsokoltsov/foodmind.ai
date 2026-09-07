@@ -253,7 +253,6 @@ jobs:
     with:
       component: bootstrap
       image_tag: ${{ github.sha }}
-    secrets: inherit
 
   deploy-nats:
     name: Deploy NATS
@@ -262,26 +261,22 @@ jobs:
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: nats
-      image_tag: ${{ needs.deploy-bootstrap.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   deploy-observability:
     name: Deploy Prometheus and Tempo
-    needs: [deploy-nats, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: observability
-      image_tag: ${{ needs.deploy-nats.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   prepare-grafana-dashboards:
     name: Prepare Grafana dashboards
-    needs: [deploy-observability, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ needs.deploy-observability.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -303,50 +298,44 @@ jobs:
 
   deploy-grafana:
     name: Deploy Grafana
-    needs: [prepare-grafana-dashboards, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: grafana
-      image_tag: ${{ needs.prepare-grafana-dashboards.outputs.image_tag }}
-      grafana_dashboard_artifact: grafana-dashboards-${{ github.sha }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   deploy-kestra:
     name: Deploy Kestra and synchronize flows
-    needs: [deploy-grafana, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: kestra
-      image_tag: ${{ needs.deploy-grafana.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   deploy-api:
     name: Deploy API
-    needs: [deploy-kestra, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: api
-      image_tag: ${{ needs.deploy-kestra.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   deploy-worker:
     name: Deploy chat worker
-    needs: [deploy-api, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-component.yml
     with:
       component: worker
-      image_tag: ${{ needs.deploy-api.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}
 
   deploy-ui:
     name: Deploy Cloud Run UI
-    needs: [deploy-worker, changes]
+    needs: [deploy-bootstrap, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     uses: ./.github/workflows/deploy-ui.yml
     with:
-      image_tag: ${{ needs.deploy-worker.outputs.image_tag }}
-    secrets: inherit
+      image_tag: ${{ github.sha }}

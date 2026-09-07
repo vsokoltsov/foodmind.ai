@@ -9,10 +9,6 @@ on:
       image_tag:
         required: true
         type: string
-      grafana_dashboard_artifact:
-        required: false
-        type: string
-        default: ""
     outputs:
       image_tag:
         description: Immutable image tag deployed by this component.
@@ -53,12 +49,15 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Download generated Grafana dashboards
-        if: ${{ inputs.grafana_dashboard_artifact != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.grafana_dashboard_artifact }}
-          path: infra/helm/foodmind/files/grafana
+      # This job compiles the dashboard itself so Grafana can deploy in
+      # parallel with the dashboard-validation job in the caller workflow.
+      - name: Install Jsonnet
+        if: ${{ inputs.component == 'grafana' }}
+        run: sudo apt-get update && sudo apt-get install --yes jsonnet
+
+      - name: Generate Grafana dashboards
+        if: ${{ inputs.component == 'grafana' }}
+        run: make grafana-dashboards
 
       - name: Deploy ${{ inputs.component }}
         run: infra/helm/deploy.sh ${{ inputs.component }}
