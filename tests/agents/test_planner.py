@@ -15,7 +15,7 @@ def test_planner_retries_transient_transport_errors(monkeypatch) -> None:
     settings = SimpleNamespace(
         OPENAI_API_KEY=None,
         models=SimpleNamespace(
-            planner=ModelSettings(provider="vertex", model="gemini-test")
+            planner=ModelSettings(provider="openai", model="test-model")
         ),
     )
     monkeypatch.setattr("app.agents.planner.get_settings", lambda: settings)
