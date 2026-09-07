@@ -1,22 +1,14 @@
-ARG PYTHON_VERSION=3.13
+ARG PYTHON_BASE_IMAGE=foodmind-python-dependencies:local
 
-FROM python:${PYTHON_VERSION}-slim
-
-COPY --from=ghcr.io/astral-sh/uv:0.8.22 /uv /uvx /bin/
+FROM ${PYTHON_BASE_IMAGE}
 
 WORKDIR /app
-
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
 
 COPY app ./app
 COPY cmd ./cmd
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY elasticsearch ./elasticsearch
-
-ENV PATH="/app/.venv/bin:${PATH}"
-ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 

@@ -1,10 +1,9 @@
-FROM python:3.13-slim
+ARG PYTHON_BASE_IMAGE=foodmind-python-dependencies:local
 
-COPY --from=ghcr.io/astral-sh/uv:0.8.22 /uv /uvx /bin/
+FROM ${PYTHON_BASE_IMAGE}
+
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
 COPY app ./app
-ENV PATH="/app/.venv/bin:$PATH" PYTHONPATH="/app" PYTHONUNBUFFERED=1
+ENV PYTHONPATH="/app"
 EXPOSE 7860
 CMD ["python", "app/ui/nicegui_app.py"]
