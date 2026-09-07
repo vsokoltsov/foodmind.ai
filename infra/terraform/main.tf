@@ -81,13 +81,24 @@ resource "google_service_account_iam_member" "github_actions_wif" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_actions.name}/attribute.repository/${var.github_owner}/${var.github_repository}"
 }
 
+resource "random_password" "nicegui_storage" {
+  length  = 64
+  special = true
+}
+
+locals {
+  nicegui_storage_secret = coalesce(var.nicegui_storage_secret, random_password.nicegui_storage.result)
+  ui_image               = coalesce(var.ui_image, "${module.gke.artifact_repository_url}/ui:latest")
+  api_public_url         = var.api_public_url == "" ? "http://${module.gke.api_public_ip}" : var.api_public_url
+}
+
 module "gcp_secrets" {
   source = "./modules/gcp-secrets"
 
   project_id                           = var.project_id
   openai_api_key                       = var.openai_api_key
   gemini_api_key                       = var.gemini_api_key
-  nicegui_storage_secret               = var.nicegui_storage_secret
+  nicegui_storage_secret               = local.nicegui_storage_secret
   foodmind_database_password           = module.cloud_sql.foodmind_password
   kestra_database_password             = module.cloud_sql.kestra_password
   elasticsearch_password               = module.elastic_cloud.elasticsearch_password
@@ -162,14 +173,13 @@ module "elastic_cloud" {
 }
 
 module "cloud_run_ui" {
-  count  = var.ui_image == null || var.nicegui_storage_secret == null ? 0 : 1
   source = "./modules/cloud-run-ui"
 
   project_id        = var.project_id
   region            = var.region
   name              = var.gke_cluster_name
-  image             = var.ui_image
-  api_url           = var.api_public_url
+  image             = local.ui_image
+  api_url           = local.api_public_url
   nicegui_secret_id = module.gcp_secrets.nicegui_storage_secret_name
   public_access     = var.ui_public_access
   dns_managed_zone  = var.dns_managed_zone

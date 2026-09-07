@@ -13,6 +13,8 @@ gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet
 docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.api" -t "${repository}/api:${image_tag}" "${project_root}"
 docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.kestra" -t "${repository}/kestra:${image_tag}" "${project_root}"
 docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.ui" -t "${repository}/ui:${image_tag}" "${project_root}"
+docker tag "${repository}/ui:${image_tag}" "${repository}/ui:latest"
 docker push "${repository}/api:${image_tag}"
 docker push "${repository}/kestra:${image_tag}"
 docker push "${repository}/ui:${image_tag}"
+docker push "${repository}/ui:latest"

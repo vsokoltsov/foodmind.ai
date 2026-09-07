@@ -1,3 +1,4 @@
+{{- if .Values.public.apiEnabled }}
 {{- if .Values.public.apiHost }}
 apiVersion: networking.gke.io/v1
 kind: ManagedCertificate
@@ -6,6 +7,7 @@ metadata:
 spec:
   domains: [{{ .Values.public.apiHost | quote }}]
 ---
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -13,10 +15,16 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: gce
     kubernetes.io/ingress.global-static-ip-name: {{ .Values.public.staticIpName | quote }}
+    {{- if .Values.public.apiHost }}
     networking.gke.io/managed-certificates: {{ .Values.public.managedCertificateName | quote }}
+    {{- end }}
 spec:
   rules:
+    {{- if .Values.public.apiHost }}
     - host: {{ .Values.public.apiHost | quote }}
+    {{- else }}
+    -
+    {{- end }}
       http:
         paths:
           - path: /

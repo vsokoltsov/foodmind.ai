@@ -123,3 +123,23 @@ resource "google_compute_global_address" "api" {
 
   depends_on = [google_project_service.compute]
 }
+
+# Regional addresses are required by GKE Service type LoadBalancer. They keep
+# the operator consoles reachable at stable IPs across Helm upgrades.
+resource "google_compute_address" "kestra" {
+  project      = var.project_id
+  name         = "${var.name}-kestra-ip"
+  region       = var.region
+  address_type = "EXTERNAL"
+
+  depends_on = [google_project_service.compute]
+}
+
+resource "google_compute_address" "nats_ui" {
+  project      = var.project_id
+  name         = "${var.name}-nats-ui-ip"
+  region       = var.region
+  address_type = "EXTERNAL"
+
+  depends_on = [google_project_service.compute]
+}

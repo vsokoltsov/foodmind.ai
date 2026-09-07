@@ -44,6 +44,9 @@ elasticsearch_endpoint="$(value_from_environment_or_terraform ELASTICSEARCH_ENDP
 elasticsearch_username="$(value_from_environment_or_terraform ELASTICSEARCH_USERNAME elasticsearch_username)"
 elasticsearch_password="$(value_from_environment_or_terraform ELASTICSEARCH_PASSWORD elasticsearch_password)"
 gcs_bucket="$(value_from_environment_or_terraform GCS_BUCKET artifact_bucket_name)"
+api_public_ip="$(value_from_environment_or_terraform API_PUBLIC_IP api_public_ip)"
+kestra_public_ip="$(value_from_environment_or_terraform KESTRA_PUBLIC_IP kestra_public_ip)"
+nats_ui_public_ip="$(value_from_environment_or_terraform NATS_UI_PUBLIC_IP nats_ui_public_ip)"
 evaluation_bucket="${EVALUATION_ARTIFACT_BUCKET:-$(tf_output evaluation_artifact_bucket_name 2>/dev/null || true)}"
 openai_key="${OPENAI_API_KEY:-$(gcloud secrets versions access latest --secret=OPENAI_API_KEY --project="${project_id}")}"
 
@@ -81,5 +84,9 @@ helm upgrade --install foodmind "${chart_directory}" \
   --set-string images.kestra="${kestra_image}" \
   --set-string cloudSql.instanceConnectionName="${cloud_sql}" \
   --set-string gcpServiceAccount="${gcp_service_account}" \
+  --set public.apiEnabled=true \
   --set-string public.apiHost="${API_DOMAIN_NAME:-}" \
+  --set-string public.kestraLoadBalancerIp="${kestra_public_ip}" \
+  --set-string public.natsUiLoadBalancerIp="${nats_ui_public_ip}" \
+  --set-string public.kestraUrl="http://${kestra_public_ip}/" \
   --wait --timeout 15m

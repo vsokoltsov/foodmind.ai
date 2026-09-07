@@ -25,9 +25,13 @@ worker:
     limits: {cpu: "2", memory: 2Gi}
 
 public:
+  apiEnabled: true
   apiHost: ""
   staticIpName: foodmind-api-ip
   managedCertificateName: foodmind-api-certificate
+  kestraLoadBalancerIp: ""
+  natsUiLoadBalancerIp: ""
+  kestraUrl: http://kestra:8080/
 
 storage:
   className: standard-rwo

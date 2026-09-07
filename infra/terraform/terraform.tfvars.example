@@ -17,14 +17,13 @@ elastic_cloud_api_key = "replace-me"
 # Use a non-deprecated ID returned for your region by list-elastic-templates.sh.
 elastic_cloud_deployment_template_id = "replace-with-current-template-id"
 
-# Cloud Run uses a verified custom domain. The API DNS A record and the UI CNAME
-# are created in this Cloud DNS zone.
-dns_managed_zone = "example-com"
-api_domain_name  = "api.example.com"
-api_public_url   = "https://api.example.com"
-ui_domain_name   = "food.example.com"
-ui_image         = "europe-west3-docker.pkg.dev/your-gcp-project/foodmind/ui:sha-..."
+# A custom domain is optional. Without one, the API uses its public static IP
+# and Cloud Run exposes the UI through its generated *.run.app URL.
+# api_domain_name  = "api.example.com"
+# ui_domain_name   = "food.example.com"
+# dns_managed_zone = "example-com"
 
 # Keep sensitive values in a local tfvars file or inject them through TF_VAR_*.
-openai_api_key         = "replace-me"
-nicegui_storage_secret = "replace-with-a-long-random-value"
+openai_api_key = "replace-me"
+# Optional: Terraform generates a secure value when omitted.
+# nicegui_storage_secret = "replace-with-a-long-random-value"

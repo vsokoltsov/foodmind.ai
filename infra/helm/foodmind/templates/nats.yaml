@@ -61,6 +61,10 @@ metadata:
   labels:
     {{- include "foodmind.labels" . | nindent 4 }}
 spec:
+  type: LoadBalancer
+  {{- if .Values.public.natsUiLoadBalancerIp }}
+  loadBalancerIP: {{ .Values.public.natsUiLoadBalancerIp | quote }}
+  {{- end }}
   selector:
     {{- include "foodmind.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: nats-ui

@@ -24,6 +24,10 @@ apiVersion: v1
 kind: Service
 metadata: {name: kestra}
 spec:
+  type: LoadBalancer
+  {{- if .Values.public.kestraLoadBalancerIp }}
+  loadBalancerIP: {{ .Values.public.kestraLoadBalancerIp | quote }}
+  {{- end }}
   selector: {app.kubernetes.io/component: kestra}
   ports: [{name: http, port: 8080}, {name: management, port: 8081}]
 ---
@@ -53,9 +57,7 @@ spec:
           ports: [{name: http, containerPort: 8080}, {name: management, containerPort: 8081}]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
-            # The in-cluster service URL is valid during bootstrap even when
-            # no public DNS name has been configured yet.
-            - {name: KESTRA_URL, value: http://kestra:8080/}
+            - {name: KESTRA_URL, value: {{ .Values.public.kestraUrl | quote }}}
             - {name: KESTRA_POSTGRES_USER, value: kestra}
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}

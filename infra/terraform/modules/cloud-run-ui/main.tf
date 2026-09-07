@@ -15,6 +15,10 @@ resource "google_cloud_run_v2_service" "ui" {
   name     = "${var.name}-ui"
   location = var.region
 
+  # This is a short-lived MVP environment. It also lets Terraform replace a
+  # failed initial revision, such as one created before its image existed.
+  deletion_protection = false
+
   template {
     service_account = google_service_account.ui.email
 

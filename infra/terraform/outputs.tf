@@ -80,6 +80,16 @@ output "api_public_ip" {
   value       = module.gke.api_public_ip
 }
 
+output "kestra_public_ip" {
+  description = "Static regional IP reserved for the public Kestra service."
+  value       = module.gke.kestra_public_ip
+}
+
+output "nats_ui_public_ip" {
+  description = "Static regional IP reserved for the public NATS UI service."
+  value       = module.gke.nats_ui_public_ip
+}
+
 output "elasticsearch_endpoint" {
   description = "Managed Elastic Cloud HTTPS endpoint."
   value       = module.elastic_cloud.elasticsearch_endpoint
@@ -98,5 +108,5 @@ output "elasticsearch_password" {
 
 output "cloud_run_ui_url" {
   description = "Cloud Run UI service URL."
-  value       = try(module.cloud_run_ui[0].url, null)
+  value       = module.cloud_run_ui.url
 }
