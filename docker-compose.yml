@@ -1,4 +1,14 @@
 services:
+  # Build the shared production dependency layer once. The application image
+  # builds consume this service through BuildKit's `service:` additional
+  # context, so Compose resolves it locally instead of trying Docker Hub.
+  python-dependencies:
+    image: foodmind-python-dependencies:local
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+    restart: "no"
+
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.4.3}
     environment:
@@ -27,6 +37,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: python-dependencies
+      additional_contexts:
+        python-dependencies: service:python-dependencies
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       # Alembic stores revision state and applies relational migrations in the
@@ -173,6 +187,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: python-dependencies
+      additional_contexts:
+        python-dependencies: service:python-dependencies
     env_file: .env
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
@@ -211,13 +229,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        PYTHON_BASE_IMAGE: python-dependencies
+      additional_contexts:
+        python-dependencies: service:python-dependencies
     env_file: .env
     environment:
       ELASTICSEARCH_URL: http://elasticsearch:9200
       DATABASE_URL: ${API_DATABASE_URL}
       NATS_URL: nats://nats:4222
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
-    command: ["faststream", "run", "cmd/chat_worker.py:app", "--reload", "--app-dir", "/app"]
+    command: ["faststream", "run", "cmd.chat_worker:app", "--reload", "--app-dir", "/app"]
     expose:
       - "9100"
     volumes:
@@ -294,6 +316,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ui
+      args:
+        PYTHON_BASE_IMAGE: python-dependencies
+      additional_contexts:
+        python-dependencies: service:python-dependencies
     environment:
       FOODMIND_API_URL: http://api:8000
       PYTHONPATH: /app
