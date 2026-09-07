@@ -21,5 +21,5 @@ spec:
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
         - name: cloud-sql-proxy
           image: {{ .Values.images.cloudSqlProxy | quote }}
-          args: ["--address=0.0.0.0", "--port=5432", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
+          args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
           securityContext: {runAsNonRoot: true}
