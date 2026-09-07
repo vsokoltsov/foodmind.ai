@@ -234,6 +234,14 @@ resource "google_project_iam_member" "github_actions_gke" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# Deployment jobs resolve Terraform-managed regional load-balancer addresses
+# before supplying them to their component Helm releases.
+resource "google_project_iam_member" "github_actions_compute_viewer" {
+  project = var.project_id
+  role    = "roles/compute.viewer"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 resource "google_service_account_iam_member" "github_actions_gke_workload" {
   service_account_id = module.gke.workload_service_account_name
   role               = "roles/iam.serviceAccountUser"

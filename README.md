@@ -1,163 +1,344 @@
 # FoodMind AI
 
-## Ingestion
+[![CI](https://github.com/vsokoltsov/foodmind.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/vsokoltsov/foodmind.ai/actions/workflows/ci.yml)
 
-Start Elasticsearch and apply the generated indexes before ingesting data:
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![PydanticAI](https://img.shields.io/badge/PydanticAI-Agents-E92063)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)
+![NiceGUI](https://img.shields.io/badge/NiceGUI-UI-2F855A)
+![Elasticsearch](https://img.shields.io/badge/Elasticsearch-Retrieval-005571?logo=elasticsearch&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Chat-4169E1?logo=postgresql&logoColor=white)
+![NATS](https://img.shields.io/badge/NATS-JetStream-27AAE1)
+![FastStream](https://img.shields.io/badge/FastStream-Messaging-8B5CF6)
+![Kestra](https://img.shields.io/badge/Kestra-Orchestration-FF6B6B)
+![Grafana](https://img.shields.io/badge/Grafana-Observability-F46800?logo=grafana&logoColor=white)
 
-```shell
-docker compose up -d
+FoodMind AI is an agentic food-intelligence application. It combines food knowledge from Wikidata, USDA FoodData Central, and Open Food Facts with Elasticsearch retrieval and specialist PydanticAI agents. Users can search foods, analyse nutrition, compare products, and receive constraint-aware recommendations in a persistent chat interface.
+
+## 🧩 Problem statement
+
+Food data is distributed across sources with different strengths and schemas:
+
+- **Wikidata** supplies semantic food, cuisine, category, and country relationships.
+- **USDA FoodData Central** supplies curated foundation-food nutrients and branded-product nutrition.
+- **Open Food Facts** supplies product barcodes, ingredients, allergens, labels, and categories.
+
+Looking across these sources manually is difficult. The same question can require search, nutrition extraction, product comparison, safety constraints, and related-entity lookup. FoodMind makes that information searchable and lets an LLM use retrieved evidence rather than answer from unsupported general knowledge.
+
+## 🎯 Objectives
+
+- Ingest the three source families reproducibly with **dlt** and **Kestra**.
+- Publish versioned Elasticsearch indexes safely through alias switching.
+- Provide hybrid retrieval: lexical BM25 search, vector search, and document reranking.
+- Route a request to the appropriate specialist agent(s), including multi-agent requests.
+- Preserve bounded conversation context while keeping long LLM work outside database transactions.
+- Stream useful execution progress to the UI through FastAPI SSE and NATS JetStream.
+- Evaluate retrieval and LLM output, persist evaluation artifacts, and load the selected retrieval approach at runtime.
+- Monitor the API, worker, agents, NATS, feedback, token use, and traces with Prometheus, Grafana, and Tempo.
+
+## 🏗️ Architecture
+
+### 🌍 Global
+
+```mermaid
+flowchart LR
+    subgraph Sources[Food data sources]
+        WD[Wikidata]
+        USDA[USDA FoodData Central]
+        OFF[Open Food Facts]
+    end
+
+    Sources --> Clients[Typed source clients and readers]
+    Clients --> Kestra[Kestra source workflows]
+    Kestra --> Ingestion[dlt ingestion stages]
+    Ingestion --> ES[(Elasticsearch<br/>versioned indexes and aliases)]
+
+    UI[NiceGUI web UI] -->|HTTP + SSE| API[FastAPI API]
+    API --> NATS[(NATS JetStream)]
+    NATS --> Worker[FastStream chat worker]
+    Worker --> ES
+    Worker --> PG[(PostgreSQL<br/>chats, messages, feedback)]
+    Worker --> LLM[OpenAI and Gemini<br/>via PydanticAI]
+    Worker --> NATS
+    NATS --> API
+
+    API --> Obs[Prometheus metrics<br/>and OpenTelemetry traces]
+    Worker --> Obs
+    Obs --> Grafana[Grafana + Tempo]
+```
+
+The storage model deliberately separates concerns: Elasticsearch is the food knowledge base, PostgreSQL stores user-facing chat state and feedback, NATS transports asynchronous chat work, and GCS can store ingestion and evaluation artifacts outside local development.
+
+### 🧠 Orchestration
+
+The orchestrator uses a fast direct route for unambiguous requests and a structured planner for requests that require several specialists. Query rewriting runs before routing, retrieval uses the configured evaluated approach, and the executor avoids repeat agent calls within one request.
+
+```mermaid
+flowchart TD
+    Q[User prompt plus bounded conversation context] --> Rewrite[Query rewriter]
+    Rewrite --> Router{Deterministic router}
+
+    Router -->|Clear single intent| Direct[Direct specialist call]
+    Router -->|Ambiguous or multi-part| Planner[Structured planner]
+
+    Planner --> Plan[Execution plan]
+    Plan --> Executor[Plan executor<br/>parallel independent steps<br/>call and retry budgets]
+
+    Direct --> FS[Food search agent]
+    Direct --> NA[Nutrition analysis agent]
+    Direct --> PC[Product comparison agent]
+    Direct --> FR[Food recommendation agent]
+
+    Executor --> FS
+    Executor --> NA
+    Executor --> PC
+    Executor --> FR
+
+    FS --> Retrieve[Hybrid retrieval + reranking]
+    NA --> Retrieve
+    PC --> Retrieve
+    FR --> Retrieve
+    Retrieve --> ES[(Elasticsearch)]
+
+    Executor --> Synthesis[Answer synthesizer]
+    Synthesis --> Answer[Grounded final answer<br/>used agents and execution state]
+```
+
+| Component | Responsibility |
+| --- | --- |
+| **Conversation context builder** | Loads the stored chat summary and recent messages, bounds their size, and combines them with the new message so follow-up requests retain relevant context. |
+| **Query rewriter** | Converts conversational wording into a compact retrieval-oriented query while preserving food names, constraints, allergens, cuisines, nutrition targets, and comparison criteria. It has a deterministic fallback. |
+| **Router** | Applies low-latency deterministic intent checks. A clearly single-purpose question goes directly to one specialist, avoiding planner and synthesis calls. |
+| **Planner** | Uses structured LLM output for ambiguous or multi-part questions. It selects one or more agents and defines their dependent or parallelizable steps. |
+| **Plan executor** | Runs independent planned steps concurrently, tracks the execution state, enforces total/per-agent call budgets, caches request-scoped retrieval work, and records retries/errors. |
+| **Specialist agents** | Food search, nutrition analysis, product comparison, and food recommendation agents call only their relevant repositories and retrieval tools. |
+| **Hybrid retriever and reranker** | Combines lexical BM25 and vector retrieval in Elasticsearch, then reorders candidates using relevance signals. The worker selects the best evaluated retrieval approach when an evaluation artifact is available. |
+| **Synthesizer** | Combines only the supplied specialist evidence into a concise final answer for multi-agent requests. Direct single-agent responses do not need this extra model call. |
+| **Execution state** | Keeps the original and rewritten query, selected agents, retrieved evidence, completed steps, errors, retry counts, and timing data for one request. It supports observability and prevents accidental repeat work. |
+
+Specialists have distinct tool sets:
+
+- **Food search**: name, ingredient, cuisine, country, brand, category, source, and Wikidata related-entity lookups.
+- **Nutrition analysis**: USDA foundation and branded nutrients, comparison, and unit normalization.
+- **Product comparison**: barcode/name lookup, nutrients, ingredients, allergens, and ranking criteria.
+- **Food recommendation**: candidate retrieval, cuisine/category relationships, nutrition targets, and allergen exclusions.
+
+### 💬 Chat
+
+The browser receives a persistent anonymous `user_id` through NiceGUI’s signed storage cookie. The UI sends a message to the streaming endpoint. The API creates a chat only when the first message is submitted; it does not create empty chats.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as NiceGUI browser
+    participant API as FastAPI SSE endpoint
+    participant NATS as NATS JetStream
+    participant Worker as FastStream worker
+    participant DB as PostgreSQL
+    participant Agent as Orchestrator and agents
+    participant ES as Elasticsearch
+
+    Browser->>API: POST /chats/stream {user_id, message, chat_id?}
+    alt First message
+        API->>DB: create chat and commit
+        API-->>Browser: chat_created event
+    end
+    API->>NATS: publish correlated ChatCommand
+    API-->>Browser: started / orchestrator_started
+
+    NATS->>Worker: durable command delivery
+    Worker->>DB: load chat, summary, and recent messages
+    Worker->>DB: persist user message and commit
+    Worker->>Agent: run with bounded context
+    Agent->>ES: retrieve and rerank evidence
+    Agent-->>Worker: tool and agent progress events
+    Worker->>NATS: publish correlated progress events
+    NATS-->>API: execution events
+    API-->>Browser: SSE progress events
+    Agent-->>Worker: final answer
+    Worker->>DB: persist assistant message and commit
+    Worker->>NATS: completed event
+    NATS-->>API: final result
+    API-->>Browser: completed event with answer
+```
+
+`ConversationContextBuilder` supplies the optional stored summary, the latest eight user/assistant messages (each truncated to 1,500 characters), and the current message. This gives the model conversational continuity without allowing the prompt to grow without bound. Database commits happen before and after long-running agent work, so PostgreSQL does not hold an idle transaction while models or retrieval are running.
+
+## 📊 Dashboards
+
+Grafana is provisioned with a FoodMind operations dashboard generated from Jsonnet at `infra/grafana/dashboards/foodmind-overview.jsonnet`. It groups panels by purpose, including:
+
+- API request rate, in-flight requests, errors, and latency.
+- Query rewriting, planning, execution, synthesis, agent, and retrieval-stage latency.
+- Per-agent and total LLM token usage.
+- NATS command/event throughput, active SSE streams, and chat-worker execution results.
+- Feedback volume and useful/not-useful ratio.
+- Conversation-context size and message-processing timings.
+- OpenTelemetry traces in Tempo, linked from Grafana.
+
+Generate the provisioned dashboard JSON after changing its Jsonnet source:
+
+```bash
+make grafana-dashboards
+```
+
+Local observability URLs:
+
+- Grafana: <http://localhost:3000>
+- Prometheus: <http://localhost:9090>
+- Tempo: <http://localhost:3200>
+
+![](./docs/dashboard_1.png)
+
+![](./docs/dashboard_2.png)
+
+![](./docs/dashboard_3.png)
+
+![](./docs/dashboard_4.png)
+
+![](./docs/dashboard_5.png)
+
+![](./docs/dashboard_6.png)
+
+![](./docs/dashboard_7.png)
+
+![](./docs/dashboard_8.png)
+
+## 🗂️ Project structure
+
+```text
+.
+├── app/
+│   ├── aggregates/        # Canonical business objects shared between layers
+│   ├── agents/            # PydanticAI specialists, router, planner, executor, context
+│   ├── api/               # FastAPI lifespan, endpoints, middleware, HTTP models
+│   ├── clients/           # Typed Wikidata, USDA, and Open Food Facts clients/readers
+│   ├── evaluation/        # LLM and retrieval evaluation, artifact persistence
+│   ├── ingestion/         # dlt stages, snapshot validation, Elasticsearch publishing
+│   ├── messaging/         # NATS JetStream commands and execution events
+│   ├── models/            # SQLAlchemy chat and feedback models
+│   ├── observability/     # Prometheus metrics and OpenTelemetry tracing
+│   ├── repositories/      # Elasticsearch and PostgreSQL data-access layer
+│   ├── storage/           # Local/GCS artifact-store protocol and implementations
+│   └── ui/                # NiceGUI chat interface
+├── alembic/migrations/    # PostgreSQL and Elasticsearch bootstrap migrations
+├── cmd/                   # API, worker, ingestion, and dashboard utility entry points
+├── elasticsearch/         # Versioned Jsonnet index and alias definitions
+├── infra/
+│   ├── grafana/           # Dashboard Jsonnet and Grafana provisioning
+│   ├── helm/foodmind/     # Helm chart for GKE deployment
+│   ├── kestra/            # Kestra application configuration and source flows
+│   ├── prometheus/        # Prometheus scrape configuration
+│   ├── tempo/             # Tempo tracing configuration
+│   └── terraform/         # Modular GCP and Elastic Cloud infrastructure
+├── tests/                 # Unit, integration, agent, API, and evaluation tests
+├── docker-compose.yml     # Complete local development stack
+└── app/models.yaml        # Version-controlled model-role configuration
+```
+
+## 📜 API contract
+
+All chat requests require a UUID `user_id`. The UI generates it once and retains it in signed browser storage. API documentation is available locally at <http://localhost:8000/docs>.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Check API and Elasticsearch availability. |
+| `POST` | `/chats` | Create a chat with its first message and queue it; returns `202 Accepted`. |
+| `POST` | `/chats/stream` | Create a chat when needed, submit a message, and stream execution events as SSE. |
+| `GET` | `/chats?user_id={uuid}` | List a user’s chats by latest activity. |
+| `GET` | `/chats/{chat_id}?user_id={uuid}` | Read one chat. |
+| `DELETE` | `/chats/{chat_id}?user_id={uuid}` | Delete a chat and its messages. |
+| `GET` | `/chats/{chat_id}/messages?user_id={uuid}` | Read chronological chat history and associated feedback. |
+| `PUT` | `/chats/{chat_id}/messages/{message_id}/feedback` | Create or replace useful/not-useful feedback for an assistant answer. |
+
+Example streamed request:
+
+```bash
+curl --no-buffer http://localhost:8000/chats/stream \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "user_id": "00000000-0000-4000-8000-000000000001",
+    "message": "Compare protein and fiber in chickpeas and lentils"
+  }'
+```
+
+The stream emits lifecycle events such as `started`, `chat_created`, `query_rewritten`, `agent_started`, `tool_started`, `agent_completed`, `completed`, and `error`. The final `completed` event contains the answer, persisted assistant-message ID, used agents, completed steps, errors, and per-step durations.
+
+## 🚀 Setup
+
+### 📋 Prerequisites
+
+- Docker Compose
+- [uv](https://docs.astral.sh/uv/)
+- An OpenAI API key and Google Cloud Application Default Credentials for the default model configuration
+- Optional: `jsonnet` for generating Grafana and Elasticsearch artifacts (`brew install jsonnet` on macOS)
+
+### 💻 Run locally
+
+1. Create your local configuration and provide the required model credentials:
+
+   ```bash
+   cp .env.sample .env
+   ```
+
+   The default `app/models.yaml` uses Vertex AI for query rewriting, planning, synthesis, and embeddings, and OpenAI for specialist agents and the evaluation judge. Set `OPENAI_API_KEY` and point `GOOGLE_APPLICATION_CREDENTIALS` at a Google service-account JSON key with Vertex AI access. The Compose stack mounts `./gcp.json` at that path, so place the key at `gcp.json` in the repository root (it must not be committed).
+
+   Alternatively, change the provider/model roles in `app/models.yaml` or override nested settings such as `MODELS__PLANNER__PROVIDER=gemini` and set `GEMINI_API_KEY`.
+
+2. Install Python dependencies:
+
+   ```bash
+   uv sync --dev
+   ```
+
+3. Start the complete stack:
+
+   ```bash
+   docker compose up --build
+   ```
+
+   `run-migrations` waits for PostgreSQL and Elasticsearch, applies Alembic migrations, creates missing Elasticsearch bootstrap indexes/aliases, and then allows dependent services to start. Kestra imports the flows in `infra/kestra/flows/` through the one-shot `kestra-init` service.
+
+4. Open the local services:
+
+   - FoodMind UI: <http://localhost:7860>
+   - FastAPI Swagger: <http://localhost:8000/docs>
+   - Kibana: <http://localhost:5601>
+   - Kestra: <http://localhost:8080>
+   - NATS UI: <http://localhost:31311>
+   - Grafana: <http://localhost:3000>
+   - Prometheus: <http://localhost:9090>
+
+### 📥 Ingest data
+
+The Kestra parent flow `foodmind.foodmind_ingestion` starts the Wikidata, USDA Foundation, USDA Branded, and Open Food Facts source flows in parallel. Each flow exposes discrete download, transformation, dlt normalization/staging, Elasticsearch publishing, and validation tasks.
+
+For a command-line run instead:
+
+```bash
 uv run python cmd/ingestion.py --show-progress
 ```
 
-The CLI starts Wikidata, USDA Foundation, USDA Branded, and Open Food Facts as
-four concurrent source jobs. Wikidata retains its two-stage dlt normalization;
-the archive readers stream records in bounded batches and all final writes use
-the source-specific Elasticsearch repositories. Existing archives are reused.
-Use `--force-download` only when they should be replaced.
+Archive readers stream large USDA and Open Food Facts datasets in bounded batches. Reuse downloaded archives by default; pass `--force-download` only when you intentionally want to replace them. After a successful validation, the source alias switches atomically to the newly published Elasticsearch snapshot. A failed load leaves the existing read alias intact.
 
-The Elasticsearch bulk batch size defaults to 500 and can be changed with
-`--batch-size`. Use `--wikidata-batch-size` separately for SPARQL query batches.
+### ✅ Quality checks and evaluation
 
-### Kestra orchestration
-
-The Compose stack includes Kestra and PostgreSQL. Start the complete local
-stack with:
-
-```shell
-docker compose up -d --build
+```bash
+make lint
+make typecheck
+make test-unit
+make test-integration
+make evaluation
 ```
 
-Open Kestra at <http://localhost:8080>. The loopback-only `kestra-ui` proxy
-automatically supplies the local Kestra credentials, so the UI does not show a
-login prompt. Override the internal credentials with the
-`KESTRA_BASIC_AUTH_USERNAME` and `KESTRA_BASIC_AUTH_PASSWORD` environment
-variables; the proxy derives its authentication cookie from the same values.
+Individual agent and retrieval evaluation targets are also available in the `Makefile`. Evaluation artifacts can be persisted in GCS and loaded by the worker to select the best evaluated retrieval approach.
 
-The one-shot `kestra-init` service imports all version-controlled flows from
-`infra/kestra/flows/` after Kestra is healthy. It is safe to rerun after editing
-a flow:
+### 🧹 Local reset
 
-```shell
-docker compose run --rm kestra-init
-```
+To remove all local service data, including PostgreSQL chats, NATS streams, and Elasticsearch indexes:
 
-Run `foodmind.foodmind_ingestion` in the UI to start the four source subflows
-in parallel. Each source is visible as a separate execution, and its download,
-transform/extract, dlt normalize, dlt staging load, Elasticsearch index, and
-validation operations are separate Kestra tasks. Persistent dlt state lives in
-the `kestra-dlt-data` volume, so independently scheduled tasks attach to the
-same source-specific pipeline and DuckDB staging database. Each source flow
-queues overlapping executions with a concurrency limit of one, while different
-source flows continue running in parallel.
-
-The Open Food Facts downloader keeps an interrupted transfer in a `.tmp` file,
-retries transient HTTP failures, and resumes with an HTTP range request. Its
-streaming read timeout is 15 minutes because the full export is roughly 12 GB;
-connect, write, and connection-pool timeouts remain independently bounded.
-
-The previous one-command ingestion remains available through
-`cmd/ingestion.py`. The
-stage interface used by Kestra can also be run directly, for example:
-
-```shell
-uv run python cmd/ingestion.py stage openfoodfacts normalize \
-  --pipelines-dir .dlt/pipelines \
-  --staging-dir .dlt/staging
-```
-
-### Application layers
-
-Source clients expose source-shaped Pydantic models. Their `.to_domain()`
-methods convert those values into canonical business objects under
-`app/aggregates/`. Ingestion and use cases pass these aggregates between
-layers. Elasticsearch repositories accept aggregates and perform the final
-conversion to persistence-specific document models internally; future read
-methods should convert documents back to aggregates before returning them.
-
-## Elasticsearch index versions
-
-Elasticsearch schemas are Jsonnet files under `elasticsearch/indexes/`. Each
-physical index has its own definition, while `common.libsonnet` contains shared
-mapping fragments. Jsonnet only renders native Elasticsearch request bodies;
-all index operations use Elasticsearch REST APIs directly.
-
-Start Elasticsearch and Kibana:
-
-```shell
-docker compose up -d
-```
-
-Compose mounts `elasticsearch/generated/v1/` read-only and runs
-`infra/elasticsearch/init-indexes.sh` after Elasticsearch becomes healthy.
-The one-shot `elasticsearch-init` service creates missing bootstrap indexes and
-applies the initial aliases only when none exist. On later starts it preserves
-the aliases' current snapshot targets and must finish successfully before
-Kibana starts.
-
-Inspect the initializer with:
-
-```shell
-docker compose logs elasticsearch-init
-```
-
-To initialize another generated version locally, provide its directory and
-matching alias payload through the version variable:
-
-```shell
-ELASTICSEARCH_INDEX_VERSION=v2 docker compose up -d
-```
-
-Existing physical indexes are deliberately not modified. To rebuild the local
-v1 indexes from scratch after changing their definitions, delete the local
-Elasticsearch volume and start again. This removes all locally indexed data:
-
-```shell
+```bash
 docker compose down --volumes
-docker compose up -d
 ```
 
-Install the Jsonnet CLI if necessary (`brew install jsonnet` on macOS), then
-create the four physical indexes:
-
-```shell
-jsonnet elasticsearch/indexes/v1/wikidata-food-entities.jsonnet \
-  | curl --fail --request PUT http://localhost:9200/wikidata-food-entities-v1 \
-      --header 'Content-Type: application/json' --data-binary @-
-
-jsonnet elasticsearch/indexes/v1/usda-foundation-foods.jsonnet \
-  | curl --fail --request PUT http://localhost:9200/usda-foundation-foods-v1 \
-      --header 'Content-Type: application/json' --data-binary @-
-
-jsonnet elasticsearch/indexes/v1/usda-branded-foods.jsonnet \
-  | curl --fail --request PUT http://localhost:9200/usda-branded-foods-v1 \
-      --header 'Content-Type: application/json' --data-binary @-
-
-jsonnet elasticsearch/indexes/v1/openfoodfacts-products.jsonnet \
-  | curl --fail --request PUT http://localhost:9200/openfoodfacts-products-v1 \
-      --header 'Content-Type: application/json' --data-binary @-
-```
-
-Activate all aliases with one atomic Elasticsearch request:
-
-```shell
-jsonnet elasticsearch/aliases/v1.jsonnet \
-  | curl --fail --request POST http://localhost:9200/_aliases \
-      --header 'Content-Type: application/json' --data-binary @-
-```
-
-The source-specific aliases are `wikidata-food-entities`,
-`usda-foundation-foods`, `usda-branded-foods`, and `openfoodfacts-products`.
-The `food-entities` read alias searches all four physical indexes.
-
-Every staged ingestion writes into a new unaliased physical snapshot index.
-The validation task compares that candidate with the dlt staging table and, on
-success, atomically switches the source-specific alias and `food-entities`
-alias. A failed validation leaves the currently published index untouched. Old
-physical indexes are retained for explicit rollback or later retention cleanup.
-
-For a schema change, copy the four definitions to an immutable `v2/`
-directory, change their schema version, and create `-v2` physical indexes.
-Populate them with the native `_reindex` API or rebuild from source data. A new
-alias request should atomically remove the aliases from `-v1` and add them to
-`-v2`. Rollback is the inverse alias request; the old physical indexes remain
-untouched until their rollback window expires.
+This is destructive to local data only.
