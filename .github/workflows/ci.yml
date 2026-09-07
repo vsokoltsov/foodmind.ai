@@ -253,6 +253,7 @@ jobs:
     with:
       component: bootstrap
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-nats:
     name: Deploy NATS
@@ -262,6 +263,7 @@ jobs:
     with:
       component: nats
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-observability:
     name: Deploy Prometheus and Tempo
@@ -271,6 +273,7 @@ jobs:
     with:
       component: observability
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   prepare-grafana-dashboards:
     name: Prepare Grafana dashboards
@@ -304,6 +307,7 @@ jobs:
     with:
       component: grafana
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-kestra:
     name: Deploy Kestra and synchronize flows
@@ -313,6 +317,7 @@ jobs:
     with:
       component: kestra
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-api:
     name: Deploy API
@@ -322,6 +327,7 @@ jobs:
     with:
       component: api
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-worker:
     name: Deploy chat worker
@@ -331,6 +337,7 @@ jobs:
     with:
       component: worker
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   deploy-ui:
     name: Deploy Cloud Run UI
@@ -339,3 +346,4 @@ jobs:
     uses: ./.github/workflows/deploy-ui.yml
     with:
       image_tag: ${{ github.sha }}
+    secrets: inherit
