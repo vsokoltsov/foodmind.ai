@@ -39,7 +39,7 @@ evaluation-executor:
 evaluation: evaluation-retrieval evaluation-food-search evaluation-nutrition-analysis evaluation-product-comparison evaluation-food-recommendation evaluation-orchestrator evaluation-planner evaluation-executor
 
 grafana-dashboards:
-	jsonnet infra/grafana/dashboards/foodmind-overview.jsonnet > infra/grafana/dashboards/generated/foodmind-overview.json
+	jsonnet infra/grafana/dashboards/foodmind-overview.jsonnet > infra/helm/foodmind/files/grafana/foodmind-overview.json
 
 populate-dashboard:
 	uv run python cmd/populate_dashboard.py
