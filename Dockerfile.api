@@ -13,6 +13,7 @@ COPY app ./app
 COPY cmd ./cmd
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY elasticsearch ./elasticsearch
 
 ENV PATH="/app/.venv/bin:${PATH}"
 ENV PYTHONUNBUFFERED=1
