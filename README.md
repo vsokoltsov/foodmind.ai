@@ -25,6 +25,19 @@ Food data is distributed across sources with different strengths and schemas:
 
 Looking across these sources manually is difficult. The same question can require search, nutrition extraction, product comparison, safety constraints, and related-entity lookup. FoodMind makes that information searchable and lets an LLM use retrieved evidence rather than answer from unsupported general knowledge.
 
+## 🥕 Data sources
+
+FoodMind ingests four datasets from three source families. Each source is preserved in its own versioned Elasticsearch index and read alias; the `food-entities` alias searches across all of them when a request needs a cross-source catalog.
+
+| Source | Dataset | What it contributes | Elasticsearch alias |
+| --- | --- | --- | --- |
+| [Wikidata](https://www.wikidata.org/) | Food entities | Canonical entity IDs, labels, descriptions, food taxonomy, cuisines, countries, aliases, and related entities. It provides the semantic layer used for cuisine/category and related-food lookups. | `wikidata-food-entities` |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Foundation Foods | Curated, analytically derived foods with detailed nutrient measurements. Best suited to nutrition analysis and comparison of generic foods. | `usda-foundation-foods` |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/) | Branded Foods | Packaged branded products with brand names, ingredients, serving data, and label-derived nutrition. | `usda-branded-foods` |
+| [Open Food Facts](https://world.openfoodfacts.org/) | Product export | Product barcodes, names, brands, ingredients, allergens, labels, categories, countries, images, and Nutri-Score-style metadata when available. Best suited to product lookup, comparison, and allergen-aware recommendations. | `openfoodfacts-products` |
+
+The source data is intentionally heterogeneous. Missing fields and inconsistent source tags are retained at ingestion time rather than silently invented or discarded. Retrieval, canonical aggregate models, source-specific filters, and agent prompts handle these differences at query time. This preserves provenance and lets answers state which catalog supplied each fact.
+
 ## 🎯 Objectives
 
 - Ingest the three source families reproducibly with **dlt** and **Kestra**.
