@@ -1,4 +1,5 @@
 {{- if or (eq .Values.component "all") (eq .Values.component "kestra") }}
+{{- $basicAuthUsername := default "admin@foodmind.local" .Values.kestra.basicAuthUsername }}
 apiVersion: v1
 kind: ConfigMap
 metadata: {name: kestra-config}
@@ -63,7 +64,7 @@ spec:
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
             - {name: KESTRA_URL, value: {{ .Values.public.kestraUrl | quote }}}
-            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ .Values.kestra.basicAuthUsername | quote }}}
+            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ $basicAuthUsername | quote }}}
             - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
             - {name: KESTRA_POSTGRES_USER, value: kestra}
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}

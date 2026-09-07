@@ -1,4 +1,5 @@
 {{- if or (eq .Values.component "all") (eq .Values.component "kestra") }}
+{{- $basicAuthUsername := default "admin@foodmind.local" .Values.kestra.basicAuthUsername }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -20,7 +21,7 @@ spec:
         - name: flow-sync
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
           env:
-            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ .Values.kestra.basicAuthUsername | quote }}}
+            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ $basicAuthUsername | quote }}}
             - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
           args:
             - flow
