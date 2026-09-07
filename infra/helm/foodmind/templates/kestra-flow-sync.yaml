@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-kestra-flow-sync
+  annotations:
+    # Register the versioned flow definitions only after the Kestra service
+    # and its PostgreSQL-backed repository are ready.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels: {app.kubernetes.io/component: kestra-flow-sync}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: foodmind
+      containers:
+        - name: flow-sync
+          image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
+          args:
+            - flow
+            - namespace
+            - update
+            - --plugins
+            - /app/plugins
+            - --server
+            - http://kestra:8080
+            - foodmind
+            - /workspace/infra/kestra/flows

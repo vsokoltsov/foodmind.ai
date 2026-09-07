@@ -195,8 +195,13 @@ jobs:
             echo "${secret_name}=${secret_value}" >> "${GITHUB_ENV}"
           done
 
-      - name: Build and push backend images
-        run: infra/deploy/build-images.sh
+      # Steps in the same job share the runner's Docker daemon and the IMAGE_TAG
+      # job environment, so no image artifact transfer is required.
+      - name: Build images
+        run: infra/deploy/build-images.sh build
+
+      - name: Push images
+        run: infra/deploy/build-images.sh push
 
       - name: Install application dependencies
         run: uv sync --frozen --no-dev
