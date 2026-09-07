@@ -28,5 +28,6 @@ openai_api_key = "replace-me"
 # Optional: Terraform generates a secure value when omitted.
 # nicegui_storage_secret = "replace-with-a-long-random-value"
 
-kestra_basic_auth_username           = ""
-kestra_basic_auth_password           = ""
+# Optional. Empty values are treated as unset; Terraform generates a password.
+# kestra_basic_auth_username = "admin@foodmind.local"
+# kestra_basic_auth_password = "replace-with-a-long-random-value"

@@ -77,7 +77,7 @@ output "cloud_sql_kestra_password" {
 
 output "kestra_basic_auth_username" {
   description = "Username of the Terraform-managed Kestra Basic Auth administrator."
-  value       = var.kestra_basic_auth_username
+  value       = local.kestra_basic_auth_username
 }
 
 output "api_public_ip" {

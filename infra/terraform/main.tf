@@ -92,13 +92,11 @@ resource "random_password" "kestra_basic_auth" {
 }
 
 locals {
-  nicegui_storage_secret = coalesce(var.nicegui_storage_secret, random_password.nicegui_storage.result)
-  kestra_basic_auth_password = coalesce(
-    var.kestra_basic_auth_password,
-    random_password.kestra_basic_auth.result,
-  )
-  ui_image       = coalesce(var.ui_image, "${module.gke.artifact_repository_url}/ui:latest")
-  api_public_url = var.api_public_url == "" ? "http://${module.gke.api_public_ip}" : var.api_public_url
+  nicegui_storage_secret     = coalesce(var.nicegui_storage_secret, random_password.nicegui_storage.result)
+  kestra_basic_auth_username = trimspace(var.kestra_basic_auth_username) != "" ? var.kestra_basic_auth_username : "admin@foodmind.local"
+  kestra_basic_auth_password = trimspace(coalesce(var.kestra_basic_auth_password, "")) != "" ? var.kestra_basic_auth_password : random_password.kestra_basic_auth.result
+  ui_image                   = coalesce(var.ui_image, "${module.gke.artifact_repository_url}/ui:latest")
+  api_public_url             = var.api_public_url == "" ? "http://${module.gke.api_public_ip}" : var.api_public_url
 }
 
 module "gcp_secrets" {
@@ -135,6 +133,7 @@ module "github_actions_config" {
   elasticsearch_endpoint       = module.elastic_cloud.elasticsearch_endpoint
   elasticsearch_username       = module.elastic_cloud.elasticsearch_username
   api_domain_name              = var.api_domain_name
+  kestra_basic_auth_username   = local.kestra_basic_auth_username
 }
 
 resource "google_service_account" "ingestion" {

@@ -83,3 +83,9 @@ resource "github_actions_variable" "api_domain_name" {
   variable_name = "API_DOMAIN_NAME"
   value         = var.api_domain_name
 }
+
+resource "github_actions_variable" "kestra_basic_auth_username" {
+  repository    = var.repository
+  variable_name = "KESTRA_BASIC_AUTH_USERNAME"
+  value         = var.kestra_basic_auth_username
+}

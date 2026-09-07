@@ -74,3 +74,8 @@ variable "api_domain_name" {
   default     = null
   nullable    = true
 }
+
+variable "kestra_basic_auth_username" {
+  description = "Non-secret Kestra Basic Auth username used by deployment jobs."
+  type        = string
+}
