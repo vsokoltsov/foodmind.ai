@@ -241,73 +241,108 @@ jobs:
       - name: Push images
         run: infra/deploy/build-images.sh push
 
-  deploy:
-    name: Deploy Helm release
+  deploy-bootstrap:
+    name: Deploy bootstrap and database migrations
     needs: [push-images, changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: bootstrap
+      image_tag: ${{ needs.push-images.outputs.image_tag }}
+    secrets: inherit
+
+  deploy-nats:
+    name: Deploy NATS
+    needs: [deploy-bootstrap, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: nats
+      image_tag: ${{ needs.deploy-bootstrap.outputs.image_tag }}
+    secrets: inherit
+
+  deploy-observability:
+    name: Deploy Prometheus and Tempo
+    needs: [deploy-nats, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: observability
+      image_tag: ${{ needs.deploy-nats.outputs.image_tag }}
+    secrets: inherit
+
+  prepare-grafana-dashboards:
+    name: Prepare Grafana dashboards
+    needs: [deploy-observability, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
-      GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME }}
-      GKE_NAMESPACE: ${{ vars.GKE_NAMESPACE }}
-      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-      CLOUD_SQL_CONNECTION_NAME: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
-      GCP_WORKLOAD_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_SERVICE_ACCOUNT }}
-      GCS_BUCKET: ${{ vars.GCS_BUCKET }}
-      EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
-      ELASTICSEARCH_ENDPOINT: ${{ vars.ELASTICSEARCH_ENDPOINT }}
-      ELASTICSEARCH_USERNAME: ${{ vars.ELASTICSEARCH_USERNAME }}
-      API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
-      IMAGE_TAG: ${{ needs.push-images.outputs.image_tag }}
+    outputs:
+      image_tag: ${{ needs.deploy-observability.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-
-      - uses: google-github-actions/setup-gcloud@v2
-        with:
-          install_components: gke-gcloud-auth-plugin
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-
-      # infra/helm/deploy.sh reads provisioned addresses and credentials from
-      # the Terraform remote state when they are not supplied as CI variables.
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - uses: azure/setup-helm@v4
-
       - name: Install Jsonnet
         run: sudo apt-get update && sudo apt-get install --yes jsonnet
+      - name: Generate dashboards
+        run: make grafana-dashboards
+      - name: Upload generated dashboards
+        uses: actions/upload-artifact@v4
+        with:
+          name: grafana-dashboards-${{ github.sha }}
+          path: infra/helm/foodmind/files/grafana/
+          retention-days: 1
 
-      - name: Load runtime secrets from Secret Manager
-        shell: bash
-        run: |
-          for secret_name in OPENAI_API_KEY FOODMIND_DATABASE_PASSWORD KESTRA_DATABASE_PASSWORD KESTRA_BASIC_AUTH_PASSWORD ELASTICSEARCH_PASSWORD; do
-            secret_value="$(gcloud secrets versions access latest --secret="${secret_name}" --project="${GCP_PROJECT_ID}")"
-            echo "::add-mask::${secret_value}"
-            echo "${secret_name}=${secret_value}" >> "${GITHUB_ENV}"
-          done
+  deploy-grafana:
+    name: Deploy Grafana
+    needs: [prepare-grafana-dashboards, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: grafana
+      image_tag: ${{ needs.prepare-grafana-dashboards.outputs.image_tag }}
+      grafana_dashboard_artifact: grafana-dashboards-${{ github.sha }}
+    secrets: inherit
 
-      - name: Install application dependencies
-        run: uv sync --frozen --no-dev
+  deploy-kestra:
+    name: Deploy Kestra and synchronize flows
+    needs: [deploy-grafana, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: kestra
+      image_tag: ${{ needs.deploy-grafana.outputs.image_tag }}
+    secrets: inherit
 
-      - name: Deploy the Helm release
-        run: infra/helm/deploy.sh
+  deploy-api:
+    name: Deploy API
+    needs: [deploy-kestra, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: api
+      image_tag: ${{ needs.deploy-kestra.outputs.image_tag }}
+    secrets: inherit
+
+  deploy-worker:
+    name: Deploy chat worker
+    needs: [deploy-api, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-component.yml
+    with:
+      component: worker
+      image_tag: ${{ needs.deploy-api.outputs.image_tag }}
+    secrets: inherit
+
+  deploy-ui:
+    name: Deploy Cloud Run UI
+    needs: [deploy-worker, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
+    uses: ./.github/workflows/deploy-ui.yml
+    with:
+      image_tag: ${{ needs.deploy-worker.outputs.image_tag }}
+    secrets: inherit
