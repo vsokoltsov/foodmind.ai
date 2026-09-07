@@ -73,6 +73,20 @@ variable "nicegui_storage_secret" {
   default     = null
 }
 
+variable "kestra_basic_auth_username" {
+  description = "Email address used for the Terraform-managed Kestra Basic Auth administrator."
+  type        = string
+  default     = "admin@foodmind.local"
+}
+
+variable "kestra_basic_auth_password" {
+  description = "Optional Kestra Basic Auth password. Terraform generates one when omitted."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+}
+
 variable "gke_cluster_name" {
   description = "Name of the regional GKE cluster."
   type        = string

@@ -40,6 +40,8 @@ cloud_sql="$(value_from_environment_or_terraform CLOUD_SQL_CONNECTION_NAME cloud
 gcp_service_account="$(value_from_environment_or_terraform GCP_WORKLOAD_SERVICE_ACCOUNT gke_workload_service_account_email)"
 foodmind_password="$(value_from_environment_or_terraform FOODMIND_DATABASE_PASSWORD cloud_sql_foodmind_password)"
 kestra_password="$(value_from_environment_or_terraform KESTRA_DATABASE_PASSWORD cloud_sql_kestra_password)"
+kestra_basic_auth_username="$(value_from_environment_or_terraform KESTRA_BASIC_AUTH_USERNAME kestra_basic_auth_username)"
+kestra_basic_auth_password="${KESTRA_BASIC_AUTH_PASSWORD:?Set KESTRA_BASIC_AUTH_PASSWORD.}"
 elasticsearch_endpoint="$(value_from_environment_or_terraform ELASTICSEARCH_ENDPOINT elasticsearch_endpoint)"
 elasticsearch_username="$(value_from_environment_or_terraform ELASTICSEARCH_USERNAME elasticsearch_username)"
 elasticsearch_password="$(value_from_environment_or_terraform ELASTICSEARCH_PASSWORD elasticsearch_password)"
@@ -70,6 +72,7 @@ kubectl -n "${namespace}" create secret generic foodmind-runtime \
   --from-literal=ALEMBIC_DATABASE_URL="${database_url}" \
   --from-literal=KESTRA_DATABASE_URL="${kestra_database_url}" \
   --from-literal=KESTRA_POSTGRES_PASSWORD="${kestra_password}" \
+  --from-literal=KESTRA_BASIC_AUTH_PASSWORD="${kestra_basic_auth_password}" \
   --from-literal=ELASTICSEARCH_URL="${elasticsearch_url}" \
   --from-literal=OPENAI_API_KEY="${openai_key}" \
   --from-literal=GCP_PROJECT_ID="${project_id}" \
@@ -89,4 +92,5 @@ helm upgrade --install foodmind "${chart_directory}" \
   --set-string public.kestraLoadBalancerIp="${kestra_public_ip}" \
   --set-string public.natsUiLoadBalancerIp="${nats_ui_public_ip}" \
   --set-string public.kestraUrl="http://${kestra_public_ip}/" \
+  --set-string kestra.basicAuthUsername="${kestra_basic_auth_username}" \
   --wait --timeout 15m

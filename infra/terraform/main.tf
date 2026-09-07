@@ -86,10 +86,19 @@ resource "random_password" "nicegui_storage" {
   special = true
 }
 
+resource "random_password" "kestra_basic_auth" {
+  length  = 40
+  special = false
+}
+
 locals {
   nicegui_storage_secret = coalesce(var.nicegui_storage_secret, random_password.nicegui_storage.result)
-  ui_image               = coalesce(var.ui_image, "${module.gke.artifact_repository_url}/ui:latest")
-  api_public_url         = var.api_public_url == "" ? "http://${module.gke.api_public_ip}" : var.api_public_url
+  kestra_basic_auth_password = coalesce(
+    var.kestra_basic_auth_password,
+    random_password.kestra_basic_auth.result,
+  )
+  ui_image       = coalesce(var.ui_image, "${module.gke.artifact_repository_url}/ui:latest")
+  api_public_url = var.api_public_url == "" ? "http://${module.gke.api_public_ip}" : var.api_public_url
 }
 
 module "gcp_secrets" {
@@ -99,6 +108,7 @@ module "gcp_secrets" {
   openai_api_key                       = var.openai_api_key
   gemini_api_key                       = var.gemini_api_key
   nicegui_storage_secret               = local.nicegui_storage_secret
+  kestra_basic_auth_password           = local.kestra_basic_auth_password
   foodmind_database_password           = module.cloud_sql.foodmind_password
   kestra_database_password             = module.cloud_sql.kestra_password
   elasticsearch_password               = module.elastic_cloud.elasticsearch_password

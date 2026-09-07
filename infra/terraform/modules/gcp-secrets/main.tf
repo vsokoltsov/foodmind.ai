@@ -91,6 +91,20 @@ resource "google_secret_manager_secret_version" "kestra_database_password" {
   secret_data = var.kestra_database_password
 }
 
+resource "google_secret_manager_secret" "kestra_basic_auth_password" {
+  project   = var.project_id
+  secret_id = "KESTRA_BASIC_AUTH_PASSWORD"
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "kestra_basic_auth_password" {
+  secret      = google_secret_manager_secret.kestra_basic_auth_password.id
+  secret_data = var.kestra_basic_auth_password
+}
+
 resource "google_secret_manager_secret" "elasticsearch_password" {
   project   = var.project_id
   secret_id = "ELASTICSEARCH_PASSWORD"
@@ -109,6 +123,7 @@ resource "google_secret_manager_secret_iam_member" "github_actions_runtime" {
   for_each = {
     FOODMIND_DATABASE_PASSWORD = google_secret_manager_secret.foodmind_database_password.secret_id
     KESTRA_DATABASE_PASSWORD   = google_secret_manager_secret.kestra_database_password.secret_id
+    KESTRA_BASIC_AUTH_PASSWORD = google_secret_manager_secret.kestra_basic_auth_password.secret_id
     ELASTICSEARCH_PASSWORD     = google_secret_manager_secret.elasticsearch_password.secret_id
   }
 

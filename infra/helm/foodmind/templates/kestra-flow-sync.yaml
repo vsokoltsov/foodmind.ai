@@ -18,6 +18,9 @@ spec:
       containers:
         - name: flow-sync
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
+          env:
+            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ .Values.kestra.basicAuthUsername | quote }}}
+            - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
           args:
             - flow
             - namespace
@@ -26,5 +29,7 @@ spec:
             - /app/plugins
             - --server
             - http://kestra:8080
+            - --user
+            - $(KESTRA_BASIC_AUTH_USERNAME):$(KESTRA_BASIC_AUTH_PASSWORD)
             - foodmind
             - /workspace/infra/kestra/flows

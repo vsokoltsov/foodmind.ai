@@ -23,6 +23,11 @@ output "kestra_database_password_secret_name" {
   value       = google_secret_manager_secret.kestra_database_password.secret_id
 }
 
+output "kestra_basic_auth_password_secret_name" {
+  description = "Secret Manager secret containing the Kestra Basic Auth password."
+  value       = google_secret_manager_secret.kestra_basic_auth_password.secret_id
+}
+
 output "elasticsearch_password_secret_name" {
   description = "Secret Manager secret containing the Elasticsearch password."
   value       = google_secret_manager_secret.elasticsearch_password.secret_id

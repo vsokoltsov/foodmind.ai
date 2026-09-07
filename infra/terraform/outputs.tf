@@ -75,6 +75,11 @@ output "cloud_sql_kestra_password" {
   sensitive   = true
 }
 
+output "kestra_basic_auth_username" {
+  description = "Username of the Terraform-managed Kestra Basic Auth administrator."
+  value       = var.kestra_basic_auth_username
+}
+
 output "api_public_ip" {
   description = "Static IP reserved for the GKE API ingress."
   value       = module.gke.api_public_ip

@@ -130,6 +130,28 @@ jobs:
           EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
         run: make ${{ matrix.target }}
 
+  changes:
+    name: Detect release-relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.filter.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            release:
+              - 'app/**'
+              - 'cmd/**'
+              - 'infra/kestra/**'
+              - 'infra/helm/**'
+              - 'Dockerfile.api'
+              - 'Dockerfile.kestra'
+              - 'Dockerfile.ui'
+              - 'pyproject.toml'
+              - 'uv.lock'
+
   build-images:
     name: Build images
     needs: [quality, tests, evaluation]
@@ -153,6 +175,14 @@ jobs:
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_artifact=foodmind-images-${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Exposes the GitHub cache service credentials needed by direct
+      # `docker buildx build --cache-to/from type=gha` invocations.
+      - name: Expose GitHub Actions cache service
+        uses: crazy-max/ghaction-github-runtime@v4
+
       - name: Build images
         run: infra/deploy/build-images.sh build
 
@@ -175,7 +205,8 @@ jobs:
 
   push-images:
     name: Push images
-    needs: build-images
+    needs: [build-images, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -212,7 +243,8 @@ jobs:
 
   deploy:
     name: Deploy Helm release
-    needs: push-images
+    needs: [push-images, changes]
+    if: ${{ needs.changes.outputs.release == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -268,7 +300,7 @@ jobs:
       - name: Load runtime secrets from Secret Manager
         shell: bash
         run: |
-          for secret_name in OPENAI_API_KEY FOODMIND_DATABASE_PASSWORD KESTRA_DATABASE_PASSWORD ELASTICSEARCH_PASSWORD; do
+          for secret_name in OPENAI_API_KEY FOODMIND_DATABASE_PASSWORD KESTRA_DATABASE_PASSWORD KESTRA_BASIC_AUTH_PASSWORD ELASTICSEARCH_PASSWORD; do
             secret_value="$(gcloud secrets versions access latest --secret="${secret_name}" --project="${GCP_PROJECT_ID}")"
             echo "::add-mask::${secret_value}"
             echo "${secret_name}=${secret_value}" >> "${GITHUB_ENV}"

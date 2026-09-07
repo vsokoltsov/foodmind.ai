@@ -46,3 +46,9 @@ variable "elasticsearch_password" {
   type        = string
   sensitive   = true
 }
+
+variable "kestra_basic_auth_password" {
+  description = "Password for the Terraform-managed Kestra Basic Auth administrator."
+  type        = string
+  sensitive   = true
+}

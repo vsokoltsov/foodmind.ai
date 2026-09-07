@@ -10,11 +10,35 @@ region="${GCP_REGION:-europe-west3}"
 target_platform="${CONTAINER_PLATFORM:-linux/amd64}"
 operation="${1:-all}"
 
+build_image() {
+  local dockerfile="$1"
+  local image="$2"
+  local cache_scope="$3"
+
+  if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+    docker buildx build \
+      --platform="${target_platform}" \
+      --cache-from="type=gha,scope=${cache_scope}" \
+      --cache-to="type=gha,mode=max,scope=${cache_scope}" \
+      --load \
+      -f "${project_root}/${dockerfile}" \
+      -t "${image}" \
+      "${project_root}"
+    return
+  fi
+
+  docker build \
+    --platform="${target_platform}" \
+    -f "${project_root}/${dockerfile}" \
+    -t "${image}" \
+    "${project_root}"
+}
+
 case "${operation}" in
   build)
-    docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.api" -t "${repository}/api:${image_tag}" "${project_root}"
-    docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.kestra" -t "${repository}/kestra:${image_tag}" "${project_root}"
-    docker build --platform="${target_platform}" -f "${project_root}/Dockerfile.ui" -t "${repository}/ui:${image_tag}" "${project_root}"
+    build_image "Dockerfile.api" "${repository}/api:${image_tag}" "foodmind-api"
+    build_image "Dockerfile.kestra" "${repository}/kestra:${image_tag}" "foodmind-kestra"
+    build_image "Dockerfile.ui" "${repository}/ui:${image_tag}" "foodmind-ui"
     docker tag "${repository}/ui:${image_tag}" "${repository}/ui:latest"
     ;;
   push)

@@ -10,6 +10,10 @@ data:
         username: ${KESTRA_POSTGRES_USER}
         password: ${KESTRA_POSTGRES_PASSWORD}
     kestra:
+      server:
+        basic-auth:
+          username: ${KESTRA_BASIC_AUTH_USERNAME}
+          password: ${KESTRA_BASIC_AUTH_PASSWORD}
       repository: {type: postgres}
       queue: {type: postgres}
       storage:
@@ -58,12 +62,14 @@ spec:
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
             - {name: KESTRA_URL, value: {{ .Values.public.kestraUrl | quote }}}
+            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ .Values.kestra.basicAuthUsername | quote }}}
+            - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
             - {name: KESTRA_POSTGRES_USER, value: kestra}
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           volumeMounts: [{name: config, mountPath: /etc/kestra}]
-          readinessProbe: {httpGet: {path: /health, port: management}, initialDelaySeconds: 20}
+          readinessProbe: {tcpSocket: {port: management}, initialDelaySeconds: 20}
         - name: cloud-sql-proxy
           image: {{ .Values.images.cloudSqlProxy | quote }}
           args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
