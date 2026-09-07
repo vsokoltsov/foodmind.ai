@@ -48,6 +48,12 @@ resource "google_service_account" "workload" {
   display_name = "FoodMind GKE workloads"
 }
 
+resource "google_project_iam_member" "node_artifact_registry_reader" {
+  project = var.project_id
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.workload.email}"
+}
+
 resource "google_container_cluster" "foodmind" {
   project                  = var.project_id
   name                     = var.name
@@ -72,7 +78,11 @@ resource "google_container_cluster" "foodmind" {
 
   deletion_protection = var.deletion_protection
 
-  depends_on = [google_project_service.container, google_project_service.compute]
+  depends_on = [
+    google_project_service.container,
+    google_project_service.compute,
+    google_project_iam_member.node_artifact_registry_reader,
+  ]
 }
 
 resource "google_container_node_pool" "foodmind" {
