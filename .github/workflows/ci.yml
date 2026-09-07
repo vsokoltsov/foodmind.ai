@@ -144,6 +144,9 @@ jobs:
             release:
               - 'app/**'
               - 'cmd/**'
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'infra/deploy/**'
               - 'infra/kestra/**'
               - 'infra/helm/**'
               - 'Dockerfile.api'
