@@ -14,6 +14,8 @@ from pydantic_settings import (
 
 from app.aggregates.model_configuration import ModelProvider
 
+MODELS_CONFIG_PATH = Path(__file__).resolve().with_name("models.yaml")
+
 
 class UsageLimitsSettings(BaseModel):
     """Request and tool-call limits for one PydanticAI execution."""
@@ -49,7 +51,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        yaml_file=Path("app/models.yaml"),
+        yaml_file=MODELS_CONFIG_PATH,
         env_nested_delimiter="__",
         extra="ignore",
     )
