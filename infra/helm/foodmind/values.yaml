@@ -35,7 +35,10 @@ kestra:
     # Raw source archives and dlt state are stored on the task-data PVC, not
     # the node's ephemeral filesystem. These limits protect the small GKE node
     # from logs and other unavoidable container-local writes.
-    requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 1Gi}
+    # The MVP GKE node has only ~2 vCPU shared with API, worker and
+    # observability workloads. A small request keeps Kestra schedulable; the
+    # higher limit still lets it use CPU when the node is idle.
+    requests: {cpu: 50m, memory: 512Mi, ephemeral-storage: 512Mi}
     limits: {cpu: "2", memory: 3Gi, ephemeral-storage: 4Gi}
 
 public:

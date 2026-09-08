@@ -121,6 +121,11 @@ kubectl -n "${namespace}" create configmap kestra-flow-definitions \
   --from-file="${project_root}/infra/kestra/flows" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# Kestra is exposed by a dedicated LoadBalancer service on port 8080, not
+# through the API ingress on port 80. Keep generated links and redirects
+# consistent with the externally reachable endpoint.
+kestra_public_url="http://${kestra_public_ip}:8080/"
+
 helm upgrade --install "${release_name}" "${chart_directory}" \
   --namespace "${namespace}" \
   --set-string component="${component}" \
@@ -132,7 +137,7 @@ helm upgrade --install "${release_name}" "${chart_directory}" \
   --set-string public.apiHost="${API_DOMAIN_NAME:-}" \
   --set-string public.kestraLoadBalancerIp="${kestra_public_ip}" \
   --set-string public.natsUiLoadBalancerIp="${nats_ui_public_ip}" \
-  --set-string public.kestraUrl="http://${kestra_public_ip}/" \
+  --set-string public.kestraUrl="${kestra_public_url}" \
   --set-string kestra.basicAuthUsername="${kestra_basic_auth_username}" \
   --take-ownership \
   --wait --timeout 15m

@@ -90,6 +90,11 @@ output "kestra_public_ip" {
   value       = module.gke.kestra_public_ip
 }
 
+output "kestra_public_url" {
+  description = "Public Kestra UI URL exposed by its LoadBalancer service."
+  value       = "http://${module.gke.kestra_public_ip}:8080/"
+}
+
 output "nats_ui_public_ip" {
   description = "Static regional IP reserved for the public NATS UI service."
   value       = module.gke.nats_ui_public_ip
