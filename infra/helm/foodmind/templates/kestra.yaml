@@ -23,8 +23,22 @@ data:
         gcs:
           bucket: ${GCS_BUCKET}
       tasks:
-        tmp-dir: {path: /tmp/kestra-wd/tmp}
+        # Process-runner task directories live on the persistent task-data
+        # volume. Keeping them on the container filesystem can evict Kestra
+        # while large ingestion files are processed.
+        tmp-dir: {path: /tmp/kestra-wd}
       url: ${KESTRA_URL}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: kestra-task-data}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.storage.className | quote }}
+  resources:
+    # ``default`` also supports upgrades of releases created before this
+    # storage value was introduced with ``helm upgrade --reuse-values``.
+    requests: {storage: {{ default "50Gi" .Values.storage.kestraTaskDataSize | quote }}}
 ---
 apiVersion: v1
 kind: Service
@@ -79,6 +93,16 @@ spec:
             - {name: KESTRA_POSTGRES_USER, value: kestra}
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
           volumeMounts: [{name: config, mountPath: /etc/kestra}]
+        # The Process task runner executes ingestion commands in the Kestra
+        # pod. Prepare the persistent directories before that server starts,
+        # so large raw downloads and dlt staging never consume node-local disk.
+        - name: prepare-task-data
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - mkdir -p /storage/data /storage/dlt /storage/tmp && chmod 0777 /storage/data /storage/dlt /storage/tmp
+          volumeMounts: [{name: task-data, mountPath: /storage}]
       containers:
         - name: kestra
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
@@ -95,7 +119,15 @@ spec:
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
-          volumeMounts: [{name: config, mountPath: /etc/kestra}]
+          resources:
+            {{- toYaml .Values.kestra.resources | nindent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/kestra}
+            - {name: task-data, mountPath: /data, subPath: data}
+            - {name: task-data, mountPath: /dlt, subPath: dlt}
+            - {name: task-data, mountPath: /tmp/kestra-wd, subPath: tmp}
           readinessProbe: {tcpSocket: {port: management}, initialDelaySeconds: 20}
-      volumes: [{name: config, configMap: {name: kestra-config}}]
+      volumes:
+        - {name: config, configMap: {name: kestra-config}}
+        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
 {{- end }}

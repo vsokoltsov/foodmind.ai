@@ -280,7 +280,12 @@ def iter_models(
 
 
 async def download_source(source: SourceName, config: StagedIngestionConfig) -> Path:
-    """Download an archive when absent, preserving it for subsequent stages."""
+    """Ensure a source archive exists locally and in artifact storage.
+
+    A restarted Kestra pod has no local source cache. When a prior download is
+    already in the configured artifact store, restore that object instead of
+    downloading the public export again.
+    """
     read_timeout = 900.0 if source == "openfoodfacts" else 300.0
     timeout = httpx.Timeout(connect=30.0, read=read_timeout, write=30.0, pool=30.0)
     store = create_artifact_store(config)
@@ -307,7 +312,13 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
                 )
         key = artifact_key(source, path)
         remote_exists = await store.exists(key)
-        if config.force_download or not path.exists():
+        if config.force_download:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            await download()
+            await store.upload(path, key)
+        elif not path.exists() and remote_exists:
+            await store.download(key, path)
+        elif not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
             await store.upload(path, key)

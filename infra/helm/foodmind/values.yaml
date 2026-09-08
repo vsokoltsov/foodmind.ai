@@ -31,6 +31,12 @@ worker:
 kestra:
   basicAuthUsername: admin@foodmind.local
   flowDefinitionsConfigMap: kestra-flow-definitions
+  resources:
+    # Raw source archives and dlt state are stored on the task-data PVC, not
+    # the node's ephemeral filesystem. These limits protect the small GKE node
+    # from logs and other unavoidable container-local writes.
+    requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 1Gi}
+    limits: {cpu: "2", memory: 3Gi, ephemeral-storage: 4Gi}
 
 public:
   apiEnabled: true
@@ -44,7 +50,9 @@ public:
 storage:
   className: standard-rwo
   natsSize: 10Gi
-  kestraSize: 20Gi
+  # Includes downloaded source archives, dlt pipeline state/staging, and
+  # Kestra process working directories. Open Food Facts alone is about 12 GiB.
+  kestraTaskDataSize: 50Gi
   grafanaSize: 5Gi
   prometheusSize: 20Gi
   tempoSize: 20Gi

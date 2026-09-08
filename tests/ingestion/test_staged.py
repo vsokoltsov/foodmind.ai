@@ -1,0 +1,65 @@
+"""Tests for independently executable ingestion stages."""
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from app.ingestion.staged import StagedIngestionConfig, download_source
+
+
+class ArtifactStore:
+    """Minimal artifact store double that records archive restoration."""
+
+    def __init__(self) -> None:
+        """Create an artifact store containing one remote archive."""
+        self.downloaded: list[tuple[str, Path]] = []
+        self.uploaded: list[tuple[Path, str]] = []
+
+    async def exists(self, key: str) -> bool:
+        """Report that the archive already exists remotely."""
+        return key == "usda-foundation/foundations.json.zip"
+
+    async def upload(self, local_path: Path, key: str) -> None:
+        """Record an upload request."""
+        self.uploaded.append((local_path, key))
+
+    async def download(self, key: str, destination: Path) -> Path:
+        """Materialize the remote archive locally."""
+        self.downloaded.append((key, destination))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"archive")
+        return destination
+
+
+@pytest.fixture
+def artifact_store() -> ArtifactStore:
+    """Return a remote artifact store test double."""
+    return ArtifactStore()
+
+
+def test_download_stage_restores_existing_gcs_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_store: ArtifactStore,
+) -> None:
+    """Restore an absent local archive instead of downloading the public export."""
+    monkeypatch.setattr(
+        "app.ingestion.staged.create_artifact_store",
+        lambda _config: artifact_store,
+    )
+    archive = tmp_path / "data" / "foundations.json.zip"
+
+    result = asyncio.run(
+        download_source(
+            "usda-foundation",
+            StagedIngestionConfig(foundation_archive=archive, artifact_storage="gcs"),
+        )
+    )
+
+    assert result == archive
+    assert archive.read_bytes() == b"archive"
+    assert artifact_store.downloaded == [
+        ("usda-foundation/foundations.json.zip", archive)
+    ]
+    assert artifact_store.uploaded == []
