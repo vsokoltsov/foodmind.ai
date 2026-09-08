@@ -243,6 +243,15 @@ resource "google_project_iam_member" "github_actions_cloud_run" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# Updating a Cloud Run revision also requires the deployer to impersonate the
+# service account configured on that revision. Keep this binding scoped to the
+# UI runtime identity rather than granting Service Account User project-wide.
+resource "google_service_account_iam_member" "github_actions_cloud_run_ui" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${module.cloud_run_ui.service_account_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 # Deployment jobs resolve Terraform-managed regional load-balancer addresses
 # before supplying them to their component Helm releases.
 resource "google_project_iam_member" "github_actions_compute_viewer" {
