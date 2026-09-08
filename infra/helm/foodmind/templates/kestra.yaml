@@ -54,6 +54,30 @@ spec:
     metadata: {labels: {app.kubernetes.io/component: kestra}}
     spec:
       serviceAccountName: foodmind
+      # Keep the Cloud SQL proxy alive as a native sidecar while the migration
+      # init container prepares Kestra's PostgreSQL schema. This is explicit
+      # rather than relying on server startup behaviour, so a new database or
+      # an upgraded Kestra image cannot start against a stale schema.
+      initContainers:
+        - name: cloud-sql-proxy
+          image: {{ .Values.images.cloudSqlProxy | quote }}
+          restartPolicy: Always
+          args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
+          startupProbe:
+            tcpSocket: {port: 5432}
+            periodSeconds: 1
+            failureThreshold: 30
+          securityContext: {runAsNonRoot: true}
+        - name: kestra-database-migrations
+          image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
+          args: ["sys", "database", "migrate", "--config", "/etc/kestra/application.yaml", "--plugins", "/app/plugins"]
+          envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
+          env:
+            - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ $basicAuthUsername | quote }}}
+            - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
+            - {name: KESTRA_POSTGRES_USER, value: kestra}
+            - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
+          volumeMounts: [{name: config, mountPath: /etc/kestra}]
       containers:
         - name: kestra
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
@@ -72,9 +96,5 @@ spec:
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           volumeMounts: [{name: config, mountPath: /etc/kestra}]
           readinessProbe: {tcpSocket: {port: management}, initialDelaySeconds: 20}
-        - name: cloud-sql-proxy
-          image: {{ .Values.images.cloudSqlProxy | quote }}
-          args: ["--address=0.0.0.0", "--port=5432", "--private-ip", {{ required "cloudSql.instanceConnectionName is required" .Values.cloudSql.instanceConnectionName | quote }}]
-          securityContext: {runAsNonRoot: true}
       volumes: [{name: config, configMap: {name: kestra-config}}]
 {{- end }}

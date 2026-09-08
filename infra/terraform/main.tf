@@ -234,6 +234,15 @@ resource "google_project_iam_member" "github_actions_gke" {
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
+# The deployment workflow updates the public UI revision after publishing its
+# image to Artifact Registry. Cloud Run Admin includes run.services.get and
+# run.services.update, both required by `gcloud run services update`.
+resource "google_project_iam_member" "github_actions_cloud_run" {
+  project = var.project_id
+  role    = "roles/run.admin"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
 # Deployment jobs resolve Terraform-managed regional load-balancer addresses
 # before supplying them to their component Helm releases.
 resource "google_project_iam_member" "github_actions_compute_viewer" {
