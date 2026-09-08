@@ -83,7 +83,22 @@ nats_ui_public_ip="${NATS_UI_PUBLIC_IP:-$(gcloud compute addresses describe "${c
 
 database_url="postgresql+psycopg://foodmind:${foodmind_password}@127.0.0.1:5432/foodmind"
 kestra_database_url="postgresql+psycopg://kestra:${kestra_password}@127.0.0.1:5432/kestra"
-elasticsearch_url="https://${elasticsearch_username}:${elasticsearch_password}@${elasticsearch_endpoint#https://}"
+# Elastic Cloud exposes a credential-free HTTPS endpoint. Normalize its scheme
+# and optional trailing slash before it becomes the authority section of a URL.
+elasticsearch_authority="${elasticsearch_endpoint#https://}"
+elasticsearch_authority="${elasticsearch_authority#http://}"
+elasticsearch_authority="${elasticsearch_authority%/}"
+if [[ -z "${elasticsearch_authority}" || "${elasticsearch_authority}" == *[@/?#]* ]]; then
+  echo "ELASTICSEARCH_ENDPOINT must be a credential-free HTTPS host and optional port." >&2
+  exit 1
+fi
+
+# Elastic Cloud credentials may contain URL-reserved characters such as ``@``
+# or ``#``. Percent-encode them before constructing the connection URL; without
+# this, HTTP clients can interpret a portion of the password as the hostname.
+elasticsearch_username_encoded="$(printf '%s' "${elasticsearch_username}" | jq -sRr '@uri')"
+elasticsearch_password_encoded="$(printf '%s' "${elasticsearch_password}" | jq -sRr '@uri')"
+elasticsearch_url="https://${elasticsearch_username_encoded}:${elasticsearch_password_encoded}@${elasticsearch_authority}"
 
 kubectl -n "${namespace}" create secret generic foodmind-runtime \
   --from-literal=DATABASE_URL="${database_url}" \
