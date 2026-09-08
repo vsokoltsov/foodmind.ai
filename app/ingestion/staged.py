@@ -1,7 +1,9 @@
 """Durable, independently executable ingestion stages for Kestra."""
 
 import json
+import logging
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeVar, get_args, get_origin
@@ -54,6 +56,8 @@ SourceName = Literal[
 ]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 JSON_CONTAINER_TYPES = (list, dict, tuple, set, frozenset)
+LOGGER = logging.getLogger(__name__)
+OPENFOODFACTS_PROGRESS_INTERVAL = 10_000
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,34 @@ def create_pipeline(source: SourceName, config: StagedIngestionConfig) -> Any:
     )
 
 
+@contextmanager
+def source_pipeline_lock(
+    source: SourceName, config: StagedIngestionConfig
+) -> Iterator[None]:
+    """Acquire an exclusive non-blocking lock for one source dlt pipeline.
+
+    Kestra retries can occur after a worker interruption. The lock turns an
+    accidental concurrent retry into a clear failed task instead of allowing
+    two processes to mutate the same dlt state and DuckDB staging files.
+    """
+    import fcntl
+
+    config.pipelines_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = config.pipelines_dir / f".{PIPELINE_NAMES[source]}.lock"
+    with lock_path.open("w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError(
+                f"The {source} ingestion pipeline is already running; "
+                "wait for the active Kestra stage before retrying."
+            ) from error
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 @dlt.resource(
     name="usda_foundation_documents",
     primary_key="id",
@@ -168,23 +200,32 @@ def usda_branded_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
 )
 def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Open Food Facts products into canonical documents."""
-    for product in OpenFoodFactsReader().iter_products(path):
+    for product_count, product in enumerate(
+        OpenFoodFactsReader().iter_products(path), start=1
+    ):
+        if product_count % OPENFOODFACTS_PROGRESS_INTERVAL == 0:
+            LOGGER.info(
+                "Open Food Facts transform progress: %s products validated from %s",
+                product_count,
+                path.name,
+            )
         yield product.to_domain().model_dump(mode="json")
 
 
 def extract_source_documents(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Extract and transform an archive into a pending dlt load package."""
-    pipeline = create_pipeline(source, config)
-    match source:
-        case "usda-foundation":
-            resource = usda_foundation_documents_resource(config.foundation_archive)
-        case "usda-branded":
-            resource = usda_branded_documents_resource(config.branded_archive)
-        case "openfoodfacts":
-            resource = openfoodfacts_documents_resource(config.openfoodfacts_archive)
-        case _:
-            raise ValueError("Wikidata uses its base/detail extraction stages")
-    return pipeline.extract(resource)
+    with source_pipeline_lock(source, config):
+        pipeline = create_pipeline(source, config)
+        match source:
+            case "usda-foundation":
+                resource = usda_foundation_documents_resource(config.foundation_archive)
+            case "usda-branded":
+                resource = usda_branded_documents_resource(config.branded_archive)
+            case "openfoodfacts":
+                resource = openfoodfacts_documents_resource(config.openfoodfacts_archive)
+            case _:
+                raise ValueError("Wikidata uses its base/detail extraction stages")
+        return pipeline.extract(resource)
 
 
 def extract_wikidata_base(config: StagedIngestionConfig) -> Any:
@@ -229,12 +270,14 @@ def extract_wikidata_normalized(config: StagedIngestionConfig) -> Any:
 
 def normalize_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Normalize all extracted packages waiting in one source pipeline."""
-    return create_pipeline(source, config).normalize()
+    with source_pipeline_lock(source, config):
+        return create_pipeline(source, config).normalize()
 
 
 def load_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Load all normalized packages into one source's DuckDB staging database."""
-    return create_pipeline(source, config).load()
+    with source_pipeline_lock(source, config):
+        return create_pipeline(source, config).load()
 
 
 def _expects_json_value(annotation: Any) -> bool:

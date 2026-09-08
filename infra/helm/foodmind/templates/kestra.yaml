@@ -40,6 +40,31 @@ spec:
     # storage value was introduced with ``helm upgrade --reuse-values``.
     requests: {storage: {{ default "50Gi" .Values.storage.kestraTaskDataSize | quote }}}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: kestra-ingestion-pods}
+rules:
+  # The Kubernetes task runner creates one short-lived pod per ingestion
+  # stage, streams its logs, and removes it after completion. Keeping this
+  # namespace-scoped avoids granting Kestra cluster-wide permissions.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: kestra-ingestion-pods}
+subjects:
+  - kind: ServiceAccount
+    name: foodmind
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kestra-ingestion-pods
+---
 apiVersion: v1
 kind: Service
 metadata: {name: kestra}
@@ -119,6 +144,9 @@ spec:
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
+            # Flow definitions use this image for isolated Kubernetes task
+            # pods. It contains the ingestion CLI and its Python dependencies.
+            - {name: FOODMIND_INGESTION_IMAGE, value: {{ required "images.kestra is required" .Values.images.kestra | quote }}}
           resources:
             {{- toYaml .Values.kestra.resources | nindent 12 }}
           volumeMounts:
