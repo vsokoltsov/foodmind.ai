@@ -113,6 +113,14 @@ kubectl -n "${namespace}" create secret generic foodmind-runtime \
   --from-literal=EVALUATION_ARTIFACT_BUCKET="${evaluation_bucket}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# Flows are source artifacts, not image configuration. Mount the checked-in
+# definitions into the synchronization hook so a flow-only deployment takes
+# effect immediately and cannot accidentally use definitions baked into an
+# older Kestra image.
+kubectl -n "${namespace}" create configmap kestra-flow-definitions \
+  --from-file="${project_root}/infra/kestra/flows" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 helm upgrade --install "${release_name}" "${chart_directory}" \
   --namespace "${namespace}" \
   --set-string component="${component}" \

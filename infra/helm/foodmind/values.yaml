@@ -30,6 +30,7 @@ worker:
 
 kestra:
   basicAuthUsername: admin@foodmind.local
+  flowDefinitionsConfigMap: kestra-flow-definitions
 
 public:
   apiEnabled: true

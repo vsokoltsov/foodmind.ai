@@ -17,12 +17,30 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: foodmind
+      # A ConfigMap volume contains Kubernetes' internal ``..data`` symlink.
+      # Kestra recursively scans directories, which otherwise loads every flow
+      # twice and rejects the duplicate IDs. Copy only declared YAML files into
+      # an empty working directory before synchronizing them.
+      initContainers:
+        - name: stage-flow-definitions
+          image: busybox:1.36
+          command: ["/bin/sh", "-c", "cp /source/*.yaml /flows/"]
+          volumeMounts:
+            - name: flow-definition-source
+              mountPath: /source
+              readOnly: true
+            - name: flow-definitions
+              mountPath: /flows
       containers:
         - name: flow-sync
           image: {{ required "images.kestra is required" .Values.images.kestra | quote }}
           env:
             - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ $basicAuthUsername | quote }}}
             - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
+          volumeMounts:
+            - name: flow-definitions
+              mountPath: /workspace/infra/kestra/flows
+              readOnly: true
           args:
             - flow
             - namespace
@@ -35,4 +53,10 @@ spec:
             - $(KESTRA_BASIC_AUTH_USERNAME):$(KESTRA_BASIC_AUTH_PASSWORD)
             - foodmind
             - /workspace/infra/kestra/flows
+      volumes:
+        - name: flow-definitions
+          emptyDir: {}
+        - name: flow-definition-source
+          configMap:
+            name: {{ .Values.kestra.flowDefinitionsConfigMap | quote }}
 {{- end }}
