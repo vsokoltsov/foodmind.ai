@@ -73,6 +73,7 @@ spec:
           args: ["sys", "database", "migrate", "--config", "/etc/kestra/application.yaml", "--plugins", "/app/plugins"]
           envFrom: [{secretRef: {name: {{ .Values.runtimeSecretName | quote }}}}]
           env:
+            - {name: KESTRA_URL, value: {{ .Values.public.kestraUrl | quote }}}
             - {name: KESTRA_BASIC_AUTH_USERNAME, value: {{ $basicAuthUsername | quote }}}
             - {name: KESTRA_BASIC_AUTH_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_BASIC_AUTH_PASSWORD}}}
             - {name: KESTRA_POSTGRES_USER, value: kestra}
