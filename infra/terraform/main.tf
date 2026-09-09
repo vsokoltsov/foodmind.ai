@@ -230,7 +230,10 @@ resource "google_project_iam_member" "github_actions_artifact_registry" {
 
 resource "google_project_iam_member" "github_actions_gke" {
   project = var.project_id
-  role    = "roles/container.developer"
+  # Helm now creates a namespace-scoped Role and RoleBinding for Kestra's
+  # isolated ingestion pods. GKE maps this API operation to
+  # ``container.roles.update``, which is not included in container.developer.
+  role    = "roles/container.admin"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
 }
 

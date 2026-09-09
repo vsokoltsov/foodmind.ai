@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from app.ingestion.staged import StagedIngestionConfig, download_source
+from app.ingestion.staged import (
+    StagedIngestionConfig,
+    download_source,
+    source_pipeline_lock,
+)
 
 
 class ArtifactStore:
@@ -63,3 +67,14 @@ def test_download_stage_restores_existing_gcs_artifact(
         ("usda-foundation/foundations.json.zip", archive)
     ]
     assert artifact_store.uploaded == []
+
+
+def test_source_pipeline_lock_rejects_a_concurrent_stage(tmp_path: Path) -> None:
+    """A duplicate Kestra retry must not mutate the same dlt pipeline."""
+    config = StagedIngestionConfig(pipelines_dir=tmp_path / "pipelines")
+
+    with source_pipeline_lock("openfoodfacts", config), pytest.raises(
+        RuntimeError, match="already running"
+    ):
+        with source_pipeline_lock("openfoodfacts", config):
+            pass
