@@ -53,6 +53,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get", "list", "watch"]
+  # PodCreate reads events when a task pod fails. This makes Kubernetes OOM
+  # and eviction causes visible directly in the Kestra execution log.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

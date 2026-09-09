@@ -135,8 +135,11 @@ tasks:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 250m, memory: 1Gi}
-            limits: {cpu: "2", memory: 3Gi}
+            # dlt's DuckDB load can hold a large normalized package while it
+            # writes the staging database. Reserve enough memory for it rather
+            # than allowing the kernel to terminate it with exit code 137.
+            requests: {cpu: 250m, memory: 2Gi}
+            limits: {cpu: "2", memory: 4Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
