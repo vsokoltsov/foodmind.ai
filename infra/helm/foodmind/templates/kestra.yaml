@@ -146,7 +146,9 @@ spec:
             - {name: GCS_PREFIX, value: foodmind/ingestion}
             # Flow definitions use this image for isolated Kubernetes task
             # pods. It contains the ingestion CLI and its Python dependencies.
-            - {name: FOODMIND_INGESTION_IMAGE, value: {{ required "images.kestra is required" .Values.images.kestra | quote }}}
+            # Kestra only exposes variables prefixed with ENV_ to Pebble
+            # expressions using its lower-case, underscore-separated name.
+            - {name: ENV_FOODMIND_INGESTION_IMAGE, value: {{ required "images.kestra is required" .Values.images.kestra | quote }}}
           resources:
             {{- toYaml .Values.kestra.resources | nindent 12 }}
           volumeMounts:

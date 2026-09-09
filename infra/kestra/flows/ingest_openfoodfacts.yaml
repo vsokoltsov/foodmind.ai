@@ -26,7 +26,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts download --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
@@ -59,7 +59,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts transform --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
@@ -92,7 +92,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts normalize --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
@@ -125,7 +125,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts load --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
@@ -158,7 +158,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
@@ -191,7 +191,7 @@ tasks:
       restartPolicy: Never
       containers:
         - name: ingestion
-          image: "{{ envs.FOODMIND_INGESTION_IMAGE }}"
+          image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
             - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
