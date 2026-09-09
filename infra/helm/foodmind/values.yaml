@@ -18,14 +18,18 @@ cloudSql:
   instanceConnectionName: ""
 
 api:
-  replicas: 2
+  # Cloud Run hosts the UI and the temporary MVP has a single small GKE node.
+  # One API replica leaves headroom for an isolated ingestion pod.
+  replicas: 1
   resources:
     requests: {cpu: 250m, memory: 512Mi}
     limits: {cpu: "1", memory: 1Gi}
 worker:
   replicas: 1
   resources:
-    requests: {cpu: 500m, memory: 1Gi}
+    # The worker can burst to two CPUs, but reserving 500m permanently blocks
+    # the batch ingestion pod on an e2-standard-2 node.
+    requests: {cpu: 250m, memory: 1Gi}
     limits: {cpu: "2", memory: 2Gi}
 
 kestra:

@@ -69,8 +69,8 @@ tasks:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 500m, memory: 1Gi}
-            limits: {cpu: "2", memory: 4Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
@@ -102,8 +102,8 @@ tasks:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 500m, memory: 1Gi}
-            limits: {cpu: "2", memory: 4Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
@@ -135,8 +135,8 @@ tasks:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 500m, memory: 1Gi}
-            limits: {cpu: "2", memory: 4Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
@@ -168,8 +168,8 @@ tasks:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 500m, memory: 1Gi}
-            limits: {cpu: "2", memory: 4Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
