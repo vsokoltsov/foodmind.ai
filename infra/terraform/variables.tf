@@ -106,9 +106,21 @@ variable "artifact_repository_id" {
 }
 
 variable "gke_node_count" {
-  description = "Initial number of GKE worker nodes. One is sufficient for the temporary MVP deployment."
+  description = "Initial number of GKE worker nodes. The autoscaler maintains the configured minimum thereafter."
   type        = number
   default     = 1
+}
+
+variable "gke_min_node_count" {
+  description = "Minimum GKE worker nodes kept for the application."
+  type        = number
+  default     = 1
+}
+
+variable "gke_max_node_count" {
+  description = "Maximum GKE worker nodes. A second node is created only for memory-heavy ingestion."
+  type        = number
+  default     = 2
 }
 
 variable "gke_machine_type" {

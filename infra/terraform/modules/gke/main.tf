@@ -93,6 +93,11 @@ resource "google_container_node_pool" "foodmind" {
   node_count     = var.node_count
   node_locations = var.node_zones
 
+  autoscaling {
+    total_min_node_count = var.min_node_count
+    total_max_node_count = var.max_node_count
+  }
+
   node_config {
     machine_type    = var.machine_type
     disk_size_gb    = var.boot_disk_size_gb

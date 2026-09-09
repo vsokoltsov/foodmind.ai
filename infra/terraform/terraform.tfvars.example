@@ -9,6 +9,8 @@ cloud_sql_tier    = "db-f1-micro"
 
 # A single 30 GB worker is sufficient for the temporary MVP deployment.
 gke_node_count        = 1
+gke_min_node_count    = 1
+gke_max_node_count    = 2
 gke_boot_disk_size_gb = 30
 gke_node_zones        = ["europe-west3-a"]
 

@@ -150,6 +150,8 @@ module "gke" {
   name                   = var.gke_cluster_name
   artifact_repository_id = var.artifact_repository_id
   node_count             = var.gke_node_count
+  min_node_count         = var.gke_min_node_count
+  max_node_count         = var.gke_max_node_count
   machine_type           = var.gke_machine_type
   boot_disk_size_gb      = var.gke_boot_disk_size_gb
   node_zones             = var.gke_node_zones
@@ -233,8 +235,8 @@ resource "google_project_iam_member" "github_actions_gke" {
   # Helm now creates a namespace-scoped Role and RoleBinding for Kestra's
   # isolated ingestion pods. GKE maps this API operation to
   # ``container.roles.update``, which is not included in container.developer.
-  role    = "roles/container.admin"
-  member  = "serviceAccount:${google_service_account.github_actions.email}"
+  role   = "roles/container.admin"
+  member = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
 # The deployment workflow updates the public UI revision after publishing its
