@@ -102,6 +102,7 @@ def _stage_parser() -> argparse.ArgumentParser:
     parser.add_argument("source", choices=SOURCES)
     parser.add_argument("stage")
     parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--source-batch-size", type=int, default=2_000)
     parser.add_argument("--wikidata-batch-size", type=int, default=100)
     parser.add_argument("--foundation-path", type=Path, default=Path("foundations.json.zip"))
     parser.add_argument("--branded-path", type=Path, default=Path("branded.json.zip"))
