@@ -2,7 +2,9 @@
 
 import argparse
 import asyncio
+import logging
 import sys
+from time import perf_counter
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,16 @@ WIKIDATA_STAGES = (
     "validate",
 )
 ARCHIVE_STAGES = ("download", "transform", "normalize", "load", "index", "validate")
+LOGGER = logging.getLogger(__name__)
+
+
+def configure_logging() -> None:
+    """Emit ingestion progress to the task pod's standard output."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
+    )
 
 
 def _legacy_parser() -> argparse.ArgumentParser:
@@ -131,27 +143,47 @@ async def _run_stage(
     allowed = WIKIDATA_STAGES if source == "wikidata" else ARCHIVE_STAGES
     if stage not in allowed:
         raise ValueError(f"Invalid stage {stage!r} for {source}; expected one of {allowed}")
-
-    if stage == "download":
-        return await download_source(source, config)
-    if stage == "extract-base":
-        return await asyncio.to_thread(extract_wikidata_base, config)
-    if stage == "extract-details":
-        return await asyncio.to_thread(extract_wikidata_details, config)
-    if stage == "transform" and source == "wikidata":
-        return await asyncio.to_thread(extract_wikidata_normalized, config)
-    if stage == "transform":
-        await materialize_source(source, config)
-        return await asyncio.to_thread(extract_source_documents, source, config)
-    if stage.startswith("normalize") or stage == "normalize":
-        return await asyncio.to_thread(normalize_pending, source, config)
-    if stage.startswith("load") or stage == "load":
-        return await asyncio.to_thread(load_pending, source, config)
-    if stage == "index":
-        return await index_staged_source(source, config)
-    if stage == "validate":
-        return await validate_staged_source(source, config)
-    raise AssertionError(f"Unhandled stage: {stage}")
+    LOGGER.info(
+        "Stage started: source=%s stage=%s pipelines_dir=%s staging_dir=%s",
+        source,
+        stage,
+        config.pipelines_dir,
+        config.staging_dir,
+    )
+    started_at = perf_counter()
+    try:
+        if stage == "download":
+            result = await download_source(source, config)
+        elif stage == "extract-base":
+            result = await asyncio.to_thread(extract_wikidata_base, config)
+        elif stage == "extract-details":
+            result = await asyncio.to_thread(extract_wikidata_details, config)
+        elif stage == "transform" and source == "wikidata":
+            result = await asyncio.to_thread(extract_wikidata_normalized, config)
+        elif stage == "transform":
+            await materialize_source(source, config)
+            result = await asyncio.to_thread(extract_source_documents, source, config)
+        elif stage.startswith("normalize") or stage == "normalize":
+            result = await asyncio.to_thread(normalize_pending, source, config)
+        elif stage.startswith("load") or stage == "load":
+            result = await asyncio.to_thread(load_pending, source, config)
+        elif stage == "index":
+            result = await index_staged_source(source, config)
+        elif stage == "validate":
+            result = await validate_staged_source(source, config)
+        else:
+            raise AssertionError(f"Unhandled stage: {stage}")
+    except Exception:
+        LOGGER.exception("Stage failed: source=%s stage=%s", source, stage)
+        raise
+    LOGGER.info(
+        "Stage completed: source=%s stage=%s elapsed_seconds=%.1f result=%s",
+        source,
+        stage,
+        perf_counter() - started_at,
+        result,
+    )
+    return result
 
 
 def _run_all(args: argparse.Namespace) -> None:
@@ -186,6 +218,7 @@ def _run_all(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Run either one Kestra stage or the backwards-compatible full ingestion."""
+    configure_logging()
     if len(sys.argv) > 1 and sys.argv[1] == "stage":
         args = _stage_parser().parse_args(sys.argv[2:])
         result = asyncio.run(_run_stage(args.source, args.stage, _stage_config(args)))

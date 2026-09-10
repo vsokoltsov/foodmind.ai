@@ -1,6 +1,7 @@
 """Concurrent ingestion of all MVP sources into Elasticsearch."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -27,6 +28,8 @@ RecordT = TypeVar("RecordT", bound=BaseModel)
 SaveBatch = Callable[[list[Any]], Awaitable[None]]
 SourceJob = Callable[[], Awaitable["SourceIngestionResult"]]
 WikidataLoader = Callable[..., tuple[Any, list[FoodEntity]]]
+LOGGER = logging.getLogger(__name__)
+INDEX_PROGRESS_INTERVAL = 10_000
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,8 @@ async def index_records(
 
         await save_batch(batch)
         indexed += len(batch)
+        if indexed % INDEX_PROGRESS_INTERVAL < len(batch):
+            LOGGER.info("Elasticsearch indexing progress: records=%s", indexed)
 
 
 async def ingest_wikidata(
