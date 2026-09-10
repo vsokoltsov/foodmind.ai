@@ -1,7 +1,6 @@
 """Concurrent ingestion of all MVP sources into Elasticsearch."""
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 import httpx
+import structlog
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
 
@@ -28,7 +28,6 @@ RecordT = TypeVar("RecordT", bound=BaseModel)
 SaveBatch = Callable[[list[Any]], Awaitable[None]]
 SourceJob = Callable[[], Awaitable["SourceIngestionResult"]]
 WikidataLoader = Callable[..., tuple[Any, list[FoodEntity]]]
-LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -103,6 +102,7 @@ async def index_records(
     indexed = 0
     batch_number = 0
     iterator = iter(records)
+    logger = structlog.get_logger(__name__)
     total_batches = (
         (total_records + batch_size - 1) // batch_size
         if total_records is not None
@@ -120,14 +120,13 @@ async def index_records(
         remaining_batches = (
             max(total_batches - batch_number, 0) if total_batches is not None else None
         )
-        LOGGER.info(
-            "Elasticsearch indexing batch completed: batch=%s total_batches=%s "
-            "records_processed=%s records_total=%s batches_remaining=%s",
-            batch_number,
-            total_batches if total_batches is not None else "unknown",
-            indexed,
-            total_records if total_records is not None else "unknown",
-            remaining_batches if remaining_batches is not None else "unknown",
+        logger.info(
+            "elasticsearch_index_batch_completed",
+            batch_number=batch_number,
+            total_batches=total_batches,
+            records_processed=indexed,
+            records_total=total_records,
+            batches_remaining=remaining_batches,
         )
 
 

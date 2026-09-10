@@ -2,11 +2,12 @@
 
 import argparse
 import asyncio
-import logging
 import sys
-from time import perf_counter
 from pathlib import Path
+from time import perf_counter
 from typing import Any
+
+import structlog
 
 # Running this file directly puts ``cmd/`` rather than the repository root on
 # sys.path. Add the root so the application package remains importable.
@@ -51,15 +52,18 @@ WIKIDATA_STAGES = (
     "validate",
 )
 ARCHIVE_STAGES = ("download", "transform", "normalize", "load", "index", "validate")
-LOGGER = logging.getLogger(__name__)
 
 
 def configure_logging() -> None:
-    """Emit ingestion progress to the task pod's standard output."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        force=True,
+    """Emit structured ingestion events to the task pod's standard output."""
+    structlog.configure(
+        processors=[
+            structlog.processors.add_log_level,
+            structlog.processors.TimeStamper(fmt="iso", utc=True),
+            structlog.processors.JSONRenderer(),
+        ],
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=False,
     )
 
 
@@ -143,12 +147,13 @@ async def _run_stage(
     allowed = WIKIDATA_STAGES if source == "wikidata" else ARCHIVE_STAGES
     if stage not in allowed:
         raise ValueError(f"Invalid stage {stage!r} for {source}; expected one of {allowed}")
-    LOGGER.info(
-        "Stage started: source=%s stage=%s pipelines_dir=%s staging_dir=%s",
-        source,
-        stage,
-        config.pipelines_dir,
-        config.staging_dir,
+    logger = structlog.get_logger(__name__)
+    logger.info(
+        "ingestion_stage_started",
+        source=source,
+        stage=stage,
+        pipelines_dir=str(config.pipelines_dir),
+        staging_dir=str(config.staging_dir),
     )
     started_at = perf_counter()
     try:
@@ -174,14 +179,14 @@ async def _run_stage(
         else:
             raise AssertionError(f"Unhandled stage: {stage}")
     except Exception:
-        LOGGER.exception("Stage failed: source=%s stage=%s", source, stage)
+        logger.exception("ingestion_stage_failed", source=source, stage=stage)
         raise
-    LOGGER.info(
-        "Stage completed: source=%s stage=%s elapsed_seconds=%.1f result=%s",
-        source,
-        stage,
-        perf_counter() - started_at,
-        result,
+    logger.info(
+        "ingestion_stage_completed",
+        source=source,
+        stage=stage,
+        elapsed_seconds=round(perf_counter() - started_at, 1),
+        result=str(result),
     )
     return result
 

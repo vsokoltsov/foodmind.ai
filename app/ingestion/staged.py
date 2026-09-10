@@ -1,7 +1,6 @@
 """Durable, independently executable ingestion stages for Kestra."""
 
 import json
-import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from typing import Any, Literal, TypeVar, get_args, get_origin
 
 import dlt
 import httpx
+import structlog
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
 
@@ -56,7 +56,6 @@ SourceName = Literal[
 ]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 JSON_CONTAINER_TYPES = (list, dict, tuple, set, frozenset)
-LOGGER = logging.getLogger(__name__)
 OPENFOODFACTS_PROGRESS_INTERVAL = 10_000
 
 
@@ -205,16 +204,17 @@ def usda_branded_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
 )
 def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Open Food Facts products into canonical documents."""
+    logger = structlog.get_logger(__name__)
     for product_count, product in enumerate(
         OpenFoodFactsReader().iter_products(path), start=1
     ):
         if product_count % OPENFOODFACTS_PROGRESS_INTERVAL == 0:
-            LOGGER.info(
-                "Open Food Facts transform batch completed: batch=%s "
-                "records_processed=%s batches_remaining=unknown archive=%s",
-                product_count // OPENFOODFACTS_PROGRESS_INTERVAL,
-                product_count,
-                path.name,
+            logger.info(
+                "openfoodfacts_transform_batch_completed",
+                batch_number=product_count // OPENFOODFACTS_PROGRESS_INTERVAL,
+                records_processed=product_count,
+                batches_remaining=None,
+                archive=path.name,
             )
         yield product.to_domain().model_dump(mode="json")
 
@@ -222,7 +222,8 @@ def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
 def extract_source_documents(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Extract and transform an archive into a pending dlt load package."""
     with source_pipeline_lock(source, config):
-        LOGGER.info("Extracting source documents: source=%s", source)
+        logger = structlog.get_logger(__name__)
+        logger.info("source_extraction_started", source=source)
         pipeline = create_pipeline(source, config)
         match source:
             case "usda-foundation":
@@ -234,7 +235,7 @@ def extract_source_documents(source: SourceName, config: StagedIngestionConfig) 
             case _:
                 raise ValueError("Wikidata uses its base/detail extraction stages")
         result = pipeline.extract(resource)
-        LOGGER.info("Extraction completed: source=%s", source)
+        logger.info("source_extraction_completed", source=source)
         return result
 
 
@@ -283,13 +284,14 @@ def normalize_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     with source_pipeline_lock(source, config):
         pipeline = create_pipeline(source, config)
         packages = pipeline.list_extracted_load_packages()
-        LOGGER.info(
-            "Normalizing pending dlt packages: source=%s packages=%s",
-            source,
-            len(packages),
+        logger = structlog.get_logger(__name__)
+        logger.info(
+            "dlt_normalization_started",
+            source=source,
+            package_count=len(packages),
         )
         result = pipeline.normalize()
-        LOGGER.info("Normalization completed: source=%s", source)
+        logger.info("dlt_normalization_completed", source=source)
         return result
 
 
@@ -298,13 +300,14 @@ def load_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     with source_pipeline_lock(source, config):
         pipeline = create_pipeline(source, config)
         packages = pipeline.list_normalized_load_packages()
-        LOGGER.info(
-            "Loading normalized dlt packages into DuckDB: source=%s packages=%s",
-            source,
-            len(packages),
+        logger = structlog.get_logger(__name__)
+        logger.info(
+            "dlt_load_started",
+            source=source,
+            package_count=len(packages),
         )
         result = pipeline.load()
-        LOGGER.info("DuckDB load completed: source=%s", source)
+        logger.info("dlt_load_completed", source=source)
         return result
 
 
@@ -383,34 +386,35 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
                 )
         key = artifact_key(source, path)
         remote_exists = await store.exists(key)
-        LOGGER.info(
-            "Preparing source archive: source=%s local_exists=%s remote_exists=%s key=%s",
-            source,
-            path.exists(),
-            remote_exists,
-            key,
+        logger = structlog.get_logger(__name__)
+        logger.info(
+            "source_archive_preparation_started",
+            source=source,
+            local_exists=path.exists(),
+            remote_exists=remote_exists,
+            artifact_key=key,
         )
         if config.force_download:
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
             await store.upload(path, key)
-            LOGGER.info("Downloaded and uploaded source archive: source=%s", source)
+            logger.info("source_archive_downloaded_and_uploaded", source=source)
         elif not path.exists() and remote_exists:
             await store.download(key, path)
-            LOGGER.info("Restored source archive from artifact storage: source=%s", source)
+            logger.info("source_archive_restored", source=source)
         elif not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
             await store.upload(path, key)
-            LOGGER.info("Downloaded and uploaded source archive: source=%s", source)
+            logger.info("source_archive_downloaded_and_uploaded", source=source)
         elif not remote_exists:
             await store.upload(path, key)
-            LOGGER.info("Uploaded existing source archive: source=%s", source)
-        LOGGER.info(
-            "Source archive ready: source=%s path=%s size_mib=%.1f",
-            source,
-            path,
-            _file_size_megabytes(path),
+            logger.info("source_archive_uploaded", source=source)
+        logger.info(
+            "source_archive_ready",
+            source=source,
+            path=str(path),
+            size_mib=round(_file_size_megabytes(path), 1),
         )
         return path
 
@@ -425,14 +429,19 @@ async def materialize_source(source: SourceName, config: StagedIngestionConfig) 
         "openfoodfacts": config.openfoodfacts_archive,
     }[source]
     store = create_artifact_store(config)
+    logger = structlog.get_logger(__name__)
     if not path.exists():
-        LOGGER.info("Restoring source archive for transform: source=%s key=%s", source, artifact_key(source, path))
+        logger.info(
+            "source_archive_restore_started",
+            source=source,
+            artifact_key=artifact_key(source, path),
+        )
         await store.download(artifact_key(source, path), path)
-    LOGGER.info(
-        "Source archive available for transform: source=%s path=%s size_mib=%.1f",
-        source,
-        path,
-        _file_size_megabytes(path),
+    logger.info(
+        "source_archive_available",
+        source=source,
+        path=str(path),
+        size_mib=round(_file_size_megabytes(path), 1),
     )
     return path
 
@@ -443,19 +452,20 @@ async def index_staged_source(
 ) -> int:
     """Stream one normalized dlt table into its Elasticsearch repository."""
     pipeline = create_pipeline(source, config)
-    LOGGER.info(
-        "Indexing staging records into Elasticsearch: source=%s batch_size=%s",
-        source,
-        config.repository_batch_size,
+    logger = structlog.get_logger(__name__)
+    logger.info(
+        "elasticsearch_index_started",
+        source=source,
+        batch_size=config.repository_batch_size,
     )
     total_records = int(
         pipeline.dataset()(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
     )
-    LOGGER.info(
-        "Elasticsearch indexing plan: source=%s records=%s batches=%s",
-        source,
-        total_records,
-        (total_records + config.repository_batch_size - 1)
+    logger.info(
+        "elasticsearch_index_plan",
+        source=source,
+        total_records=total_records,
+        total_batches=(total_records + config.repository_batch_size - 1)
         // config.repository_batch_size,
     )
     async with AsyncElasticsearch(
@@ -510,7 +520,7 @@ async def index_staged_source(
             batch_size=config.repository_batch_size,
             total_records=total_records,
         )
-        LOGGER.info("Elasticsearch indexing completed: source=%s records=%s", source, indexed)
+        logger.info("elasticsearch_index_completed", source=source, records=indexed)
         return indexed
 
 
@@ -519,7 +529,8 @@ async def validate_staged_source(
     config: StagedIngestionConfig,
 ) -> tuple[int, int]:
     """Validate a candidate snapshot and publish it through stable aliases."""
-    LOGGER.info("Validating staged Elasticsearch snapshot: source=%s", source)
+    logger = structlog.get_logger(__name__)
+    logger.info("elasticsearch_validation_started", source=source)
     pipeline = create_pipeline(source, config)
     dataset = pipeline.dataset()
     # Elasticsearch stores one document per primary key.  A source may contain
@@ -549,17 +560,21 @@ async def validate_staged_source(
                 candidate=candidate,
                 staging_dir=config.staging_dir,
             )
-            LOGGER.info("Published Elasticsearch snapshot: source=%s index=%s", source, candidate)
+            logger.info(
+                "elasticsearch_snapshot_published",
+                source=source,
+                index=candidate,
+            )
     if staged != indexed:
         raise RuntimeError(
             f"{source} count mismatch: staging_unique={staged}, "
             f"staging_rows={staged_rows}, elasticsearch={indexed}"
         )
-    LOGGER.info(
-        "Validation completed: source=%s staging_rows=%s unique_ids=%s indexed=%s",
-        source,
-        staged_rows,
-        staged,
-        indexed,
+    logger.info(
+        "elasticsearch_validation_completed",
+        source=source,
+        staging_rows=staged_rows,
+        unique_ids=staged,
+        indexed=indexed,
     )
     return staged, indexed
