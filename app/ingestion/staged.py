@@ -259,6 +259,38 @@ def _batch_resource(source: SourceName, documents: list[dict[str, Any]]) -> Any:
     )
 
 
+def _discard_incompatible_legacy_pending_packages(
+    source: SourceName, config: StagedIngestionConfig, pipeline: Any
+) -> None:
+    """Remove pending DuckDB jobs left behind before the Parquet migration.
+
+    Archive pipelines used DuckDB before they were changed to the filesystem
+    destination.  A pending ``insert_values.gz`` job cannot be loaded by the
+    filesystem destination and prevents dlt from starting a new Parquet run.
+    This is deliberately narrow: it only removes *all* pending packages when
+    every pending job is legacy.  A mixed legacy/Parquet state needs operator
+    review instead of risking deletion of new durable work.
+    """
+    load_directory = config.pipelines_dir / PIPELINE_NAMES[source] / "load"
+    legacy_jobs = list(load_directory.glob("**/*.insert_values.gz"))
+    if not legacy_jobs:
+        return
+
+    parquet_jobs = list(load_directory.glob("**/*.parquet"))
+    if parquet_jobs:
+        raise RuntimeError(
+            "The dlt pipeline contains both legacy DuckDB and Parquet pending "
+            "packages. Resolve the pending packages before retrying ingestion."
+        )
+
+    structlog.get_logger(__name__).warning(
+        "dlt_destination_migration_discarded_legacy_pending_packages",
+        source=source,
+        legacy_job_count=len(legacy_jobs),
+    )
+    pipeline.drop_pending_packages()
+
+
 def process_source_batches(source: SourceName, config: StagedIngestionConfig) -> int:
     """Write an archive to durable Parquet through small recoverable dlt runs.
 
@@ -273,6 +305,7 @@ def process_source_batches(source: SourceName, config: StagedIngestionConfig) ->
     with source_pipeline_lock(source, config):
         logger = structlog.get_logger(__name__)
         pipeline = create_pipeline(source, config)
+        _discard_incompatible_legacy_pending_packages(source, config, pipeline)
         pipeline.load()
         completed_batches = len(pipeline.list_completed_load_packages())
         logger.info(

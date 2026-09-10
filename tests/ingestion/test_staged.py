@@ -109,3 +109,34 @@ def test_process_source_batches_writes_small_durable_parquet_loads(
     # first two source batches a second time.
     assert process_source_batches("openfoodfacts", config) == 0
     assert len(_parquet_paths("openfoodfacts", config)) == 2
+
+
+def test_process_source_batches_discards_pre_parquet_duckdb_pending_packages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A one-time destination migration must not retry incompatible dlt jobs."""
+    monkeypatch.setattr(
+        "app.ingestion.staged._archive_documents",
+        lambda _source, _config: iter([{"id": "one", "label": "One", "code": "one"}]),
+    )
+    config = StagedIngestionConfig(
+        pipelines_dir=tmp_path / "pipelines",
+        staging_dir=tmp_path / "state",
+        normalized_dir=tmp_path / "normalized",
+    )
+    legacy_job = (
+        config.pipelines_dir
+        / "openfoodfacts_products"
+        / "load"
+        / "normalized"
+        / "legacy"
+        / "started_jobs"
+        / "openfoodfacts_documents.legacy.insert_values.gz"
+    )
+    legacy_job.parent.mkdir(parents=True)
+    legacy_job.write_bytes(b"legacy")
+
+    assert process_source_batches("openfoodfacts", config) == 1
+    assert not legacy_job.exists()
+    assert len(_parquet_paths("openfoodfacts", config)) == 1
