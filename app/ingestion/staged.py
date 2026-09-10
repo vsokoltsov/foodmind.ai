@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Literal, TypeVar, get_args, get_origin
 
 import dlt
+import gcsfs
 import httpx
 import structlog
 from elasticsearch import AsyncElasticsearch
 from pydantic import BaseModel
+from pyarrow import parquet
 
 from app.clients.openfoodfacts.client import OpenFoodFactsClient
 from app.clients.openfoodfacts.reader import OpenFoodFactsReader
@@ -56,7 +58,6 @@ SourceName = Literal[
 ]
 ModelT = TypeVar("ModelT", bound=BaseModel)
 JSON_CONTAINER_TYPES = (list, dict, tuple, set, frozenset)
-OPENFOODFACTS_PROGRESS_INTERVAL = 10_000
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,9 @@ class StagedIngestionConfig:
     openfoodfacts_archive: Path = Path("openfoodfacts-products.jsonl.gz")
     pipelines_dir: Path = Path(".dlt/pipelines")
     staging_dir: Path = Path(".dlt/staging")
+    normalized_dir: Path = Path(".dlt/normalized")
     repository_batch_size: int = 500
+    source_batch_size: int = 2_000
     wikidata_batch_size: int = 100
     show_progress: bool = False
     force_download: bool = False
@@ -82,6 +85,8 @@ class StagedIngestionConfig:
         """Reject invalid batch sizes before a stage mutates state."""
         if self.repository_batch_size < 1:
             raise ValueError("repository_batch_size must be at least 1")
+        if self.source_batch_size < 1:
+            raise ValueError("source_batch_size must be at least 1")
         if self.wikidata_batch_size < 1:
             raise ValueError("wikidata_batch_size must be at least 1")
 
@@ -122,19 +127,37 @@ def create_artifact_store(config: StagedIngestionConfig) -> ArtifactStore:
 
 
 def create_pipeline(source: SourceName, config: StagedIngestionConfig) -> Any:
-    """Create or attach to one source's persistent dlt pipeline."""
+    """Create one dlt pipeline with a durable Parquet destination.
+
+    The filesystem destination writes Parquet directly to GCS through
+    ``gcsfs``. A completed ``pipeline.run`` therefore leaves a durable load
+    package behind even when the Kubernetes task pod is interrupted. The dlt
+    working state stays on the durable task-data PVC, avoiding a dependency on
+    the GCS FUSE CSI add-on.
+    """
     config.pipelines_dir.mkdir(parents=True, exist_ok=True)
     config.staging_dir.mkdir(parents=True, exist_ok=True)
+    config.normalized_dir.mkdir(parents=True, exist_ok=True)
     pipeline_name = PIPELINE_NAMES[source]
-    destination = dlt.destinations.duckdb(
-        credentials=str(config.staging_dir / f"{pipeline_name}.duckdb")
-    )
+    if source != "wikidata" and config.artifact_storage == "gcs":
+        if not config.gcs_bucket:
+            raise ValueError("GCS_BUCKET is required for GCS-backed dlt ingestion")
+        destination = dlt.destinations.filesystem(
+            bucket_url=(
+                f"gs://{config.gcs_bucket}/"
+                f"{config.gcs_prefix.strip('/')}/dlt-normalized"
+            )
+        )
+    elif source != "wikidata":
+        destination = dlt.destinations.filesystem(bucket_url=str(config.normalized_dir))
+    else:
+        destination = dlt.destinations.duckdb(
+            credentials=str(config.staging_dir / f"{pipeline_name}.duckdb")
+        )
     return dlt.pipeline(
         pipeline_name=pipeline_name,
         pipelines_dir=str(config.pipelines_dir),
         destination=destination,
-        # Keep the DuckDB catalog name and schema name distinct. DuckDB treats
-        # identical catalog/schema identifiers as ambiguous in qualified SQL.
         dataset_name=f"{pipeline_name}_data",
     )
 
@@ -150,9 +173,9 @@ def source_pipeline_lock(
 ) -> Iterator[None]:
     """Acquire an exclusive non-blocking lock for one source dlt pipeline.
 
-    Kestra retries can occur after a worker interruption. The lock turns an
-    accidental concurrent retry into a clear failed task instead of allowing
-    two processes to mutate the same dlt state and DuckDB staging files.
+    Kestra retries can occur after a worker interruption. The dlt working
+    directory is on the durable task-data volume, so ``flock`` rejects a
+    duplicate process before it can mutate the same pipeline state.
     """
     import fcntl
 
@@ -172,71 +195,116 @@ def source_pipeline_lock(
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
-@dlt.resource(
-    name="usda_foundation_documents",
-    primary_key="id",
-    write_disposition="replace",
-    columns=FoundationFoodAggregate,
-)
 def usda_foundation_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Foundation Foods into canonical documents."""
     for food in USDAFoodDataReader().iter_foundation_foods(path):
         yield food.to_domain().model_dump(mode="json")
 
 
-@dlt.resource(
-    name="usda_branded_documents",
-    primary_key="id",
-    write_disposition="replace",
-    columns=BrandedFoodAggregate,
-)
 def usda_branded_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Branded Foods into canonical documents."""
     for food in USDAFoodDataReader().iter_branded_foods(path):
         yield food.to_domain().model_dump(mode="json")
 
 
-@dlt.resource(
-    name="openfoodfacts_documents",
-    primary_key="id",
-    write_disposition="replace",
-    columns=OpenFoodFactsAggregate,
-)
 def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     """Validate and transform Open Food Facts products into canonical documents."""
-    logger = structlog.get_logger(__name__)
-    for product_count, product in enumerate(
-        OpenFoodFactsReader().iter_products(path), start=1
-    ):
-        if product_count % OPENFOODFACTS_PROGRESS_INTERVAL == 0:
-            logger.info(
-                "openfoodfacts_transform_batch_completed",
-                batch_number=product_count // OPENFOODFACTS_PROGRESS_INTERVAL,
-                records_processed=product_count,
-                batches_remaining=None,
-                archive=path.name,
-            )
+    for product in OpenFoodFactsReader().iter_products(path):
         yield product.to_domain().model_dump(mode="json")
 
 
-def extract_source_documents(source: SourceName, config: StagedIngestionConfig) -> Any:
-    """Extract and transform an archive into a pending dlt load package."""
+ARCHIVE_MODELS: dict[SourceName, type[BaseModel]] = {
+    "usda-foundation": FoundationFoodAggregate,
+    "usda-branded": BrandedFoodAggregate,
+    "openfoodfacts": OpenFoodFactsAggregate,
+}
+
+
+def _archive_documents(source: SourceName, config: StagedIngestionConfig) -> Iterator[dict[str, Any]]:
+    """Yield canonical documents for one archive-backed source."""
+    match source:
+        case "usda-foundation":
+            yield from usda_foundation_documents_resource(config.foundation_archive)
+        case "usda-branded":
+            yield from usda_branded_documents_resource(config.branded_archive)
+        case "openfoodfacts":
+            yield from openfoodfacts_documents_resource(config.openfoodfacts_archive)
+        case _:
+            raise ValueError("Wikidata uses its dedicated extraction stages")
+
+
+def _document_batches(
+    documents: Iterator[dict[str, Any]], batch_size: int
+) -> Iterator[list[dict[str, Any]]]:
+    """Split a document stream without materialising the full source export."""
+    batch: list[dict[str, Any]] = []
+    for document in documents:
+        batch.append(document)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _batch_resource(source: SourceName, documents: list[dict[str, Any]]) -> Any:
+    """Build one append-only Parquet dlt resource from a bounded batch."""
+    return dlt.resource(
+        documents,
+        name=TABLES[source],
+        primary_key="id",
+        write_disposition="append",
+        columns=ARCHIVE_MODELS[source],
+        file_format="parquet",
+    )
+
+
+def process_source_batches(source: SourceName, config: StagedIngestionConfig) -> int:
+    """Write an archive to durable Parquet through small recoverable dlt runs.
+
+    Each call to ``pipeline.run`` commits one source batch.  At startup dlt
+    first finishes any package left pending by an interrupted pod; completed
+    package count then identifies the already committed leading batches.  A
+    retry may scan the compressed input to that point, but it never rebuilds
+    or reloads the completed normalized data.
+    """
+    if source == "wikidata":
+        raise ValueError("Wikidata uses its dedicated staged flow")
     with source_pipeline_lock(source, config):
         logger = structlog.get_logger(__name__)
-        logger.info("source_extraction_started", source=source)
         pipeline = create_pipeline(source, config)
-        match source:
-            case "usda-foundation":
-                resource = usda_foundation_documents_resource(config.foundation_archive)
-            case "usda-branded":
-                resource = usda_branded_documents_resource(config.branded_archive)
-            case "openfoodfacts":
-                resource = openfoodfacts_documents_resource(config.openfoodfacts_archive)
-            case _:
-                raise ValueError("Wikidata uses its base/detail extraction stages")
-        result = pipeline.extract(resource)
-        logger.info("source_extraction_completed", source=source)
-        return result
+        pipeline.load()
+        completed_batches = len(pipeline.list_completed_load_packages())
+        logger.info(
+            "dlt_parquet_batch_processing_started",
+            source=source,
+            source_batch_size=config.source_batch_size,
+            completed_batches=completed_batches,
+        )
+        processed_records = 0
+        for batch_number, documents in enumerate(
+            _document_batches(_archive_documents(source, config), config.source_batch_size),
+            start=1,
+        ):
+            if batch_number <= completed_batches:
+                continue
+            pipeline.run(_batch_resource(source, documents))
+            processed_records += len(documents)
+            logger.info(
+                "dlt_parquet_batch_completed",
+                source=source,
+                batch_number=batch_number,
+                records_in_batch=len(documents),
+                records_processed=processed_records,
+                batches_remaining=None,
+            )
+        logger.info(
+            "dlt_parquet_batch_processing_completed",
+            source=source,
+            newly_processed_records=processed_records,
+            completed_batches=len(pipeline.list_completed_load_packages()),
+        )
+        return processed_records
 
 
 def extract_wikidata_base(config: StagedIngestionConfig) -> Any:
@@ -353,6 +421,61 @@ def iter_models(
             yield _model_from_row(columns, row, model)
 
 
+def _parquet_paths(source: SourceName, config: StagedIngestionConfig) -> list[Path | str]:
+    """Return the durable Parquet files written for an archive source."""
+    pipeline_name = PIPELINE_NAMES[source]
+    if config.artifact_storage == "gcs":
+        if not config.gcs_bucket:
+            raise ValueError("GCS_BUCKET is required for GCS-backed dlt ingestion")
+        prefix = "/".join(
+            (
+                config.gcs_prefix.strip("/"),
+                "dlt-normalized",
+                f"{pipeline_name}_data",
+                TABLES[source],
+                "*.parquet",
+            )
+        )
+        filesystem = gcsfs.GCSFileSystem(project=config.gcp_project_id)
+        return sorted(filesystem.glob(f"{config.gcs_bucket}/{prefix}"))
+    table_dir = config.normalized_dir / f"{pipeline_name}_data" / TABLES[source]
+    return sorted(table_dir.glob("*.parquet")) if table_dir.exists() else []
+
+
+def _parquet_file(path: Path | str, config: StagedIngestionConfig) -> Any:
+    """Open one local or GCS-backed Parquet file for Arrow."""
+    if isinstance(path, Path):
+        return path.open("rb")
+    return gcsfs.GCSFileSystem(project=config.gcp_project_id).open(path, "rb")
+
+
+def _parquet_row_count(paths: list[Path | str], config: StagedIngestionConfig) -> int:
+    """Read Parquet metadata only, avoiding a full in-memory row count."""
+    total = 0
+    for path in paths:
+        with _parquet_file(path, config) as source:
+            total += parquet.ParquetFile(source).metadata.num_rows
+    return total
+
+
+def iter_parquet_models(
+    paths: list[Path | str],
+    model: type[ModelT],
+    *,
+    batch_size: int,
+    config: StagedIngestionConfig,
+) -> Iterator[ModelT]:
+    """Read normalized Parquet files in bounded Arrow batches."""
+    for path in paths:
+        with _parquet_file(path, config) as source:
+            for record_batch in parquet.ParquetFile(source).iter_batches(
+                batch_size=batch_size
+            ):
+                for row in record_batch.to_pylist():
+                    columns = list(row)
+                    yield _model_from_row(columns, tuple(row.values()), model)
+
+
 async def download_source(source: SourceName, config: StagedIngestionConfig) -> Path:
     """Ensure a source archive exists locally and in artifact storage.
 
@@ -450,7 +573,7 @@ async def index_staged_source(
     source: SourceName,
     config: StagedIngestionConfig,
 ) -> int:
-    """Stream one normalized dlt table into its Elasticsearch repository."""
+    """Stream durable Parquet batches into one Elasticsearch snapshot."""
     pipeline = create_pipeline(source, config)
     logger = structlog.get_logger(__name__)
     logger.info(
@@ -458,9 +581,15 @@ async def index_staged_source(
         source=source,
         batch_size=config.repository_batch_size,
     )
-    total_records = int(
-        pipeline.dataset()(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
-    )
+    if source == "wikidata":
+        total_records = int(
+            pipeline.dataset()(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
+        )
+    else:
+        paths = _parquet_paths(source, config)
+        if not paths:
+            raise RuntimeError(f"No normalized Parquet files found for {source}")
+        total_records = _parquet_row_count(paths, config)
     logger.info(
         "elasticsearch_index_plan",
         source=source,
@@ -485,30 +614,33 @@ async def index_staged_source(
                     index_name=target_index,
                 ).save_records
             case "usda-foundation":
-                records = iter_models(
-                    pipeline,
-                    TABLES[source],
+                records = iter_parquet_models(
+                    paths,
                     FoundationFoodAggregate,
+                    batch_size=config.repository_batch_size,
+                    config=config,
                 )
                 save = USDARepository(
                     elasticsearch,
                     foundation_index_name=target_index,
                 ).save_foundations
             case "usda-branded":
-                records = iter_models(
-                    pipeline,
-                    TABLES[source],
+                records = iter_parquet_models(
+                    paths,
                     BrandedFoodAggregate,
+                    batch_size=config.repository_batch_size,
+                    config=config,
                 )
                 save = USDARepository(
                     elasticsearch,
                     branded_index_name=target_index,
                 ).save_branded
             case "openfoodfacts":
-                records = iter_models(
-                    pipeline,
-                    TABLES[source],
+                records = iter_parquet_models(
+                    paths,
                     OpenFoodFactsAggregate,
+                    batch_size=config.repository_batch_size,
+                    config=config,
                 )
                 save = OpenFoodFactsRepository(
                     elasticsearch,
@@ -531,20 +663,35 @@ async def validate_staged_source(
     """Validate a candidate snapshot and publish it through stable aliases."""
     logger = structlog.get_logger(__name__)
     logger.info("elasticsearch_validation_started", source=source)
-    pipeline = create_pipeline(source, config)
-    dataset = pipeline.dataset()
-    # Elasticsearch stores one document per primary key.  A source may contain
-    # repeated rows for the same entity (Open Food Facts currently has such
-    # duplicates), and indexing those rows replaces the previous document.
-    # Validate against the number of unique IDs rather than the raw row count.
-    staged_rows = int(
-        dataset(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
-    )
-    staged = int(
-        dataset(
-            f"SELECT COUNT(DISTINCT id) FROM {TABLES[source]}"
-        ).fetchscalar()
-    )
+    if source == "wikidata":
+        pipeline = create_pipeline(source, config)
+        dataset = pipeline.dataset()
+        staged_rows = int(
+            dataset(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
+        )
+        staged = int(
+            dataset(
+                f"SELECT COUNT(DISTINCT id) FROM {TABLES[source]}"
+            ).fetchscalar()
+        )
+    else:
+        paths = _parquet_paths(source, config)
+        staged_rows = _parquet_row_count(paths, config)
+        # Elasticsearch has one document per primary key. Keeping only the
+        # identifiers here is bounded by the source cardinality rather than
+        # the much larger source payload, and validation runs independently
+        # from the memory-sensitive normalization work.
+        staged = len(
+            {
+                str(record.model_dump()["id"])
+                for record in iter_parquet_models(
+                    paths,
+                    ARCHIVE_MODELS[source],
+                    batch_size=config.repository_batch_size,
+                    config=config,
+                )
+            }
+        )
     async with AsyncElasticsearch(config.elasticsearch_url) as elasticsearch:
         candidate = await pending_snapshot_index(
             elasticsearch,

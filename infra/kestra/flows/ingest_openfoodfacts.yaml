@@ -1,20 +1,20 @@
 id: ingest_openfoodfacts
 namespace: foodmind
-description: Download, transform, normalize, stage, and index Open Food Facts.
+description: Persist Open Food Facts as durable GCS Parquet, then index Elasticsearch.
 
 concurrency:
   limit: 1
   behavior: QUEUE
 
-# Each stage runs in an isolated Kubernetes pod. This is important for Open
-# Food Facts: a 13 GiB export can use several GiB of memory while parsing. A
-# Kestra server restart now reconnects to the labelled task pod rather than
-# starting a second local process against the same dlt pipeline.
+# Each task has its own pod. The source archive and dlt working state live on
+# the durable task-data PVC while dlt writes normalized Parquet directly to
+# GCS. A failed pod can therefore resume completed dlt packages without a GKE
+# GCS FUSE CSI add-on.
 tasks:
   - id: download_archive
     type: io.kestra.plugin.kubernetes.core.PodCreate
     namespace: foodmind
-    waitUntilRunning: PT5M
+    waitUntilRunning: PT15M
     waitRunning: PT2H
     metadata:
       labels:
@@ -29,9 +29,11 @@ tasks:
           image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts download --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
+            - >-
+              cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts download
+              --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
           env:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
@@ -44,16 +46,16 @@ tasks:
       volumes:
         - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
 
-  - id: transform_documents
+  - id: process_parquet_batches
     type: io.kestra.plugin.kubernetes.core.PodCreate
     namespace: foodmind
-    waitUntilRunning: PT5M
+    waitUntilRunning: PT15M
     waitRunning: PT12H
     metadata:
       labels:
         app.kubernetes.io/component: foodmind-ingestion
         foodmind.io/source: openfoodfacts
-        foodmind.io/stage: transform
+        foodmind.io/stage: parquet
     spec:
       serviceAccountName: foodmind
       restartPolicy: Never
@@ -62,89 +64,18 @@ tasks:
           image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts transform --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
+            - >-
+              cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts process
+              --source-batch-size 2000
+              --openfoodfacts-path /data/openfoodfacts-products.jsonl.gz
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
           env:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 250m, memory: 1Gi}
+            requests: {cpu: 500m, memory: 1Gi}
             limits: {cpu: "2", memory: 3Gi}
-          volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
-      volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
-
-  - id: normalize_documents
-    type: io.kestra.plugin.kubernetes.core.PodCreate
-    namespace: foodmind
-    waitUntilRunning: PT5M
-    waitRunning: PT6H
-    metadata:
-      labels:
-        app.kubernetes.io/component: foodmind-ingestion
-        foodmind.io/source: openfoodfacts
-        foodmind.io/stage: normalize
-    spec:
-      serviceAccountName: foodmind
-      restartPolicy: Never
-      containers:
-        - name: ingestion
-          image: "{{ envs.foodmind_ingestion_image }}"
-          command: ["/bin/sh", "-c"]
-          args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts normalize --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
-          env:
-            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
-            - {name: GCS_PREFIX, value: foodmind/ingestion}
-          resources:
-            requests: {cpu: 250m, memory: 1Gi}
-            limits: {cpu: "2", memory: 3Gi}
-          volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
-      volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
-
-  - id: load_staging_database
-    type: io.kestra.plugin.kubernetes.core.PodCreate
-    namespace: foodmind
-    # A 4 GiB request intentionally requires a second node when the
-    # application node is occupied. GKE autoscaling can take several minutes,
-    # so do not delete the pending pod before the autoscaler can schedule it.
-    waitUntilRunning: PT15M
-    waitRunning: PT6H
-    metadata:
-      labels:
-        app.kubernetes.io/component: foodmind-ingestion
-        foodmind.io/source: openfoodfacts
-        foodmind.io/stage: load
-    spec:
-      serviceAccountName: foodmind
-      restartPolicy: Never
-      containers:
-        - name: ingestion
-          image: "{{ envs.foodmind_ingestion_image }}"
-          command: ["/bin/sh", "-c"]
-          args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts load --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
-          env:
-            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
-            - {name: GCS_PREFIX, value: foodmind/ingestion}
-          resources:
-            # dlt's DuckDB load can hold a large normalized package while it
-            # writes the staging database. The request must equal the peak
-            # allocation: Kubernetes schedules from requests, not limits. This
-            # lets the GKE autoscaler provision a separate node instead of
-            # overcommitting the node that runs the API and Kestra.
-            requests: {cpu: 250m, memory: 4Gi}
-            limits: {cpu: "2", memory: 4Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}
@@ -154,7 +85,7 @@ tasks:
   - id: index_elasticsearch
     type: io.kestra.plugin.kubernetes.core.PodCreate
     namespace: foodmind
-    waitUntilRunning: PT5M
+    waitUntilRunning: PT15M
     waitRunning: PT6H
     metadata:
       labels:
@@ -169,9 +100,11 @@ tasks:
           image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
+            - >-
+              cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts index
+              --batch-size 500
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
           env:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
@@ -187,7 +120,7 @@ tasks:
   - id: validate_counts
     type: io.kestra.plugin.kubernetes.core.PodCreate
     namespace: foodmind
-    waitUntilRunning: PT5M
+    waitUntilRunning: PT15M
     waitRunning: PT30M
     metadata:
       labels:
@@ -202,15 +135,17 @@ tasks:
           image: "{{ envs.foodmind_ingestion_image }}"
           command: ["/bin/sh", "-c"]
           args:
-            - cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-          envFrom:
-            - secretRef: {name: foodmind-runtime}
+            - >-
+              cd /workspace && python /workspace/cmd/ingestion.py stage openfoodfacts validate
+              --batch-size 500
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
           env:
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
           resources:
-            requests: {cpu: 250m, memory: 512Mi}
-            limits: {cpu: "1", memory: 1Gi}
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
             - {name: task-data, mountPath: /data, subPath: data}
             - {name: task-data, mountPath: /dlt, subPath: dlt}

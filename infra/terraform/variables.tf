@@ -124,9 +124,9 @@ variable "gke_max_node_count" {
 }
 
 variable "gke_machine_type" {
-  description = "GKE worker-node machine type."
+  description = "GKE worker-node machine type. Keep enough memory for Kestra and one bounded ingestion batch."
   type        = string
-  default     = "e2-standard-2"
+  default     = "e2-highmem-2"
 }
 
 variable "gke_boot_disk_size_gb" {

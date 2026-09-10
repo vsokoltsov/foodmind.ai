@@ -7,7 +7,9 @@ import pytest
 
 from app.ingestion.staged import (
     StagedIngestionConfig,
+    _parquet_paths,
     download_source,
+    process_source_batches,
     source_pipeline_lock,
 )
 
@@ -78,3 +80,32 @@ def test_source_pipeline_lock_rejects_a_concurrent_stage(tmp_path: Path) -> None
     ):
         with source_pipeline_lock("openfoodfacts", config):
             pass
+
+
+def test_process_source_batches_writes_small_durable_parquet_loads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each bounded source batch must become a standalone Parquet load."""
+    records = [
+        {"id": "one", "label": "One", "code": "one"},
+        {"id": "two", "label": "Two", "code": "two"},
+        {"id": "three", "label": "Three", "code": "three"},
+    ]
+    monkeypatch.setattr(
+        "app.ingestion.staged._archive_documents",
+        lambda _source, _config: iter(records),
+    )
+    config = StagedIngestionConfig(
+        pipelines_dir=tmp_path / "pipelines",
+        staging_dir=tmp_path / "state",
+        normalized_dir=tmp_path / "normalized",
+        source_batch_size=2,
+    )
+
+    assert process_source_batches("openfoodfacts", config) == 3
+    assert len(_parquet_paths("openfoodfacts", config)) == 2
+    # A retry skips the two durable dlt packages rather than appending the
+    # first two source batches a second time.
+    assert process_source_batches("openfoodfacts", config) == 0
+    assert len(_parquet_paths("openfoodfacts", config)) == 2

@@ -11,6 +11,7 @@ cloud_sql_tier    = "db-f1-micro"
 gke_node_count        = 1
 gke_min_node_count    = 1
 gke_max_node_count    = 2
+gke_machine_type      = "e2-highmem-2"
 gke_boot_disk_size_gb = 30
 gke_node_zones        = ["europe-west3-a"]
 

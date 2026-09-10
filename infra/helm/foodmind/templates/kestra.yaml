@@ -95,7 +95,8 @@ spec:
       maxUnavailable: 1
   selector: {matchLabels: {app.kubernetes.io/component: kestra}}
   template:
-    metadata: {labels: {app.kubernetes.io/component: kestra}}
+    metadata:
+      labels: {app.kubernetes.io/component: kestra}
     spec:
       serviceAccountName: foodmind
       # Keep the Cloud SQL proxy alive as a native sidecar while the migration

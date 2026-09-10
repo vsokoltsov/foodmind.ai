@@ -20,7 +20,6 @@ from app.ingestion.staged import (
     SourceName,
     StagedIngestionConfig,
     download_source,
-    extract_source_documents,
     extract_wikidata_base,
     extract_wikidata_details,
     extract_wikidata_normalized,
@@ -28,6 +27,7 @@ from app.ingestion.staged import (
     load_pending,
     materialize_source,
     normalize_pending,
+    process_source_batches,
     validate_staged_source,
 )
 from app.observability.structured_logging import configure_structlog
@@ -52,10 +52,15 @@ WIKIDATA_STAGES = (
     "index",
     "validate",
 )
-ARCHIVE_STAGES = ("download", "transform", "normalize", "load", "index", "validate")
+ARCHIVE_STAGES = (
+    "download",
+    "process",
+    "index",
+    "validate",
+)
 
 
-def configure_logging() -> None:
+def configure_structured_logging() -> None:
     """Emit structured ingestion events to the task pod's standard output."""
     configure_structlog()
 
@@ -69,6 +74,7 @@ def _legacy_parser() -> argparse.ArgumentParser:
     parser.add_argument("--destination", default="duckdb")
     parser.add_argument("--dataset-name", default="foodmind")
     parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--source-batch-size", type=int, default=2_000)
     parser.add_argument("--wikidata-batch-size", type=int, default=100)
     parser.add_argument(
         "--foundation-path",
@@ -106,6 +112,9 @@ def _stage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--pipelines-dir", type=Path, default=Path(".dlt/pipelines"))
     parser.add_argument("--staging-dir", type=Path, default=Path(".dlt/staging"))
+    parser.add_argument(
+        "--normalized-dir", type=Path, default=Path(".dlt/normalized")
+    )
     parser.add_argument("--show-progress", action="store_true")
     parser.add_argument("--force-download", action="store_true")
     return parser
@@ -120,7 +129,9 @@ def _stage_config(args: argparse.Namespace) -> StagedIngestionConfig:
         openfoodfacts_archive=args.openfoodfacts_path,
         pipelines_dir=args.pipelines_dir,
         staging_dir=args.staging_dir,
+        normalized_dir=args.normalized_dir,
         repository_batch_size=args.batch_size,
+        source_batch_size=args.source_batch_size,
         wikidata_batch_size=args.wikidata_batch_size,
         show_progress=args.show_progress,
         force_download=args.force_download,
@@ -158,9 +169,9 @@ async def _run_stage(
             result = await asyncio.to_thread(extract_wikidata_details, config)
         elif stage == "transform" and source == "wikidata":
             result = await asyncio.to_thread(extract_wikidata_normalized, config)
-        elif stage == "transform":
+        elif stage == "process":
             await materialize_source(source, config)
-            result = await asyncio.to_thread(extract_source_documents, source, config)
+            result = await asyncio.to_thread(process_source_batches, source, config)
         elif stage.startswith("normalize") or stage == "normalize":
             result = await asyncio.to_thread(normalize_pending, source, config)
         elif stage.startswith("load") or stage == "load":
@@ -216,7 +227,7 @@ def _run_all(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Run either one Kestra stage or the backwards-compatible full ingestion."""
-    configure_logging()
+    configure_structured_logging()
     if len(sys.argv) > 1 and sys.argv[1] == "stage":
         args = _stage_parser().parse_args(sys.argv[2:])
         result = asyncio.run(_run_stage(args.source, args.stage, _stage_config(args)))

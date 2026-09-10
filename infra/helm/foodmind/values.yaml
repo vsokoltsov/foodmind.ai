@@ -56,8 +56,8 @@ public:
 storage:
   className: standard-rwo
   natsSize: 10Gi
-  # Includes downloaded source archives, dlt pipeline state/staging, and
-  # Kestra process working directories. Open Food Facts alone is about 12 GiB.
+  # Holds source archives and dlt working state. Archive-source normalized data
+  # is written directly to the GCS filesystem destination as Parquet.
   kestraTaskDataSize: 50Gi
   grafanaSize: 5Gi
   prometheusSize: 20Gi
