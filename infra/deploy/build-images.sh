@@ -15,6 +15,30 @@ region="${GCP_REGION:-europe-west3}"
 target_platform="${CONTAINER_PLATFORM:-linux/amd64}"
 dependency_image="${PYTHON_BASE_IMAGE:-${repository}/python-dependencies:local}"
 
+authenticate_artifact_registry() {
+  """Log Docker into Artifact Registry with a retried short-lived access token."""
+  local registry="${region}-docker.pkg.dev"
+  local attempt
+  local access_token
+
+  # `gcloud auth configure-docker` installs a credential helper which fetches a
+  # new Workload Identity token for every BuildKit registry request.  That made
+  # image builds fail when a single token request was reset by the network.
+  # A normal Docker login gives BuildKit one temporary token for this build.
+  for attempt in 1 2 3 4 5; do
+    if access_token="$(gcloud auth print-access-token)" && \
+      printf '%s' "${access_token}" | \
+        docker login --username=oauth2accesstoken --password-stdin "https://${registry}"; then
+      return 0
+    fi
+    echo "Artifact Registry authentication attempt ${attempt}/5 failed; retrying..." >&2
+    sleep "${attempt}"
+  done
+
+  echo "Unable to authenticate Docker with Artifact Registry after 5 attempts." >&2
+  return 1
+}
+
 build_image() {
   local dockerfile="$1"
   local image="$2"
@@ -90,6 +114,9 @@ build_dependencies() {
 
 case "${operation}" in
   dependencies)
+    if [[ "${PUSH_DEPENDENCY_IMAGE:-false}" == "true" ]]; then
+      authenticate_artifact_registry
+    fi
     build_dependencies
     ;;
   build)
@@ -109,34 +136,37 @@ case "${operation}" in
     docker tag "${repository}/ui:${image_tag}" "${repository}/ui:latest"
     ;;
   publish-api)
+    authenticate_artifact_registry
     build_image "Dockerfile.api" "${repository}/api:${image_tag}" "foodmind-api" true
     ;;
   publish-kestra)
+    authenticate_artifact_registry
     build_image "Dockerfile.kestra" "${repository}/kestra:${image_tag}" "foodmind-kestra" true
     ;;
   publish-ui)
+    authenticate_artifact_registry
     build_image "Dockerfile.ui" "${repository}/ui:${image_tag}" "foodmind-ui" true
     docker buildx imagetools create \
       --tag "${repository}/ui:latest" \
       "${repository}/ui:${image_tag}"
     ;;
   push)
-    gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet
+    authenticate_artifact_registry
     docker push "${repository}/api:${image_tag}"
     docker push "${repository}/kestra:${image_tag}"
     docker push "${repository}/ui:${image_tag}"
     docker push "${repository}/ui:latest"
     ;;
   push-api)
-    gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet
+    authenticate_artifact_registry
     docker push "${repository}/api:${image_tag}"
     ;;
   push-kestra)
-    gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet
+    authenticate_artifact_registry
     docker push "${repository}/kestra:${image_tag}"
     ;;
   push-ui)
-    gcloud auth configure-docker "${region}-docker.pkg.dev" --quiet
+    authenticate_artifact_registry
     docker push "${repository}/ui:${image_tag}"
     docker push "${repository}/ui:latest"
     ;;
