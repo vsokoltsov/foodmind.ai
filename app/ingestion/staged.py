@@ -210,7 +210,9 @@ def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
     ):
         if product_count % OPENFOODFACTS_PROGRESS_INTERVAL == 0:
             LOGGER.info(
-                "Open Food Facts transform progress: %s products validated from %s",
+                "Open Food Facts transform batch completed: batch=%s "
+                "records_processed=%s batches_remaining=unknown archive=%s",
+                product_count // OPENFOODFACTS_PROGRESS_INTERVAL,
                 product_count,
                 path.name,
             )
@@ -279,8 +281,14 @@ def extract_wikidata_normalized(config: StagedIngestionConfig) -> Any:
 def normalize_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Normalize all extracted packages waiting in one source pipeline."""
     with source_pipeline_lock(source, config):
-        LOGGER.info("Normalizing pending dlt packages: source=%s", source)
-        result = create_pipeline(source, config).normalize()
+        pipeline = create_pipeline(source, config)
+        packages = pipeline.list_extracted_load_packages()
+        LOGGER.info(
+            "Normalizing pending dlt packages: source=%s packages=%s",
+            source,
+            len(packages),
+        )
+        result = pipeline.normalize()
         LOGGER.info("Normalization completed: source=%s", source)
         return result
 
@@ -288,8 +296,14 @@ def normalize_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
 def load_pending(source: SourceName, config: StagedIngestionConfig) -> Any:
     """Load all normalized packages into one source's DuckDB staging database."""
     with source_pipeline_lock(source, config):
-        LOGGER.info("Loading normalized dlt packages into DuckDB: source=%s", source)
-        result = create_pipeline(source, config).load()
+        pipeline = create_pipeline(source, config)
+        packages = pipeline.list_normalized_load_packages()
+        LOGGER.info(
+            "Loading normalized dlt packages into DuckDB: source=%s packages=%s",
+            source,
+            len(packages),
+        )
+        result = pipeline.load()
         LOGGER.info("DuckDB load completed: source=%s", source)
         return result
 
@@ -434,6 +448,16 @@ async def index_staged_source(
         source,
         config.repository_batch_size,
     )
+    total_records = int(
+        pipeline.dataset()(f"SELECT COUNT(*) FROM {TABLES[source]}").fetchscalar()
+    )
+    LOGGER.info(
+        "Elasticsearch indexing plan: source=%s records=%s batches=%s",
+        source,
+        total_records,
+        (total_records + config.repository_batch_size - 1)
+        // config.repository_batch_size,
+    )
     async with AsyncElasticsearch(
         config.elasticsearch_url,
         request_timeout=120,
@@ -484,6 +508,7 @@ async def index_staged_source(
             records,
             save,  # type: ignore[arg-type]
             batch_size=config.repository_batch_size,
+            total_records=total_records,
         )
         LOGGER.info("Elasticsearch indexing completed: source=%s records=%s", source, indexed)
         return indexed

@@ -29,7 +29,6 @@ SaveBatch = Callable[[list[Any]], Awaitable[None]]
 SourceJob = Callable[[], Awaitable["SourceIngestionResult"]]
 WikidataLoader = Callable[..., tuple[Any, list[FoodEntity]]]
 LOGGER = logging.getLogger(__name__)
-INDEX_PROGRESS_INTERVAL = 10_000
 
 
 @dataclass(frozen=True)
@@ -93,10 +92,22 @@ async def index_records(
     save_batch: SaveBatch,
     *,
     batch_size: int,
+    total_records: int | None = None,
 ) -> int:
-    """Parse a synchronous stream off-loop and index it in bounded batches."""
+    """Parse a synchronous stream off-loop and index it in bounded batches.
+
+    ``total_records`` is optional because a streaming source may not expose a
+    count without a second expensive pass over its archive. Staging tables can
+    provide it cheaply, allowing the caller to show exact remaining batches.
+    """
     indexed = 0
+    batch_number = 0
     iterator = iter(records)
+    total_batches = (
+        (total_records + batch_size - 1) // batch_size
+        if total_records is not None
+        else None
+    )
 
     while True:
         batch = await asyncio.to_thread(_take_batch, iterator, batch_size)
@@ -105,8 +116,19 @@ async def index_records(
 
         await save_batch(batch)
         indexed += len(batch)
-        if indexed % INDEX_PROGRESS_INTERVAL < len(batch):
-            LOGGER.info("Elasticsearch indexing progress: records=%s", indexed)
+        batch_number += 1
+        remaining_batches = (
+            max(total_batches - batch_number, 0) if total_batches is not None else None
+        )
+        LOGGER.info(
+            "Elasticsearch indexing batch completed: batch=%s total_batches=%s "
+            "records_processed=%s records_total=%s batches_remaining=%s",
+            batch_number,
+            total_batches if total_batches is not None else "unknown",
+            indexed,
+            total_records if total_records is not None else "unknown",
+            remaining_batches if remaining_batches is not None else "unknown",
+        )
 
 
 async def ingest_wikidata(
