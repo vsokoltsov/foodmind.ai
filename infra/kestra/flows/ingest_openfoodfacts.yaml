@@ -113,7 +113,10 @@ tasks:
   - id: load_staging_database
     type: io.kestra.plugin.kubernetes.core.PodCreate
     namespace: foodmind
-    waitUntilRunning: PT5M
+    # A 4 GiB request intentionally requires a second node when the
+    # application node is occupied. GKE autoscaling can take several minutes,
+    # so do not delete the pending pod before the autoscaler can schedule it.
+    waitUntilRunning: PT15M
     waitRunning: PT6H
     metadata:
       labels:
