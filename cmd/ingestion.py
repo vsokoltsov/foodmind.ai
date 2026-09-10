@@ -30,6 +30,7 @@ from app.ingestion.staged import (
     normalize_pending,
     validate_staged_source,
 )
+from app.observability.structured_logging import configure_structlog
 from app.settings import get_settings
 
 SOURCES: tuple[SourceName, ...] = (
@@ -56,15 +57,7 @@ ARCHIVE_STAGES = ("download", "transform", "normalize", "load", "index", "valida
 
 def configure_logging() -> None:
     """Emit structured ingestion events to the task pod's standard output."""
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.JSONRenderer(),
-        ],
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=False,
-    )
+    configure_structlog()
 
 
 def _legacy_parser() -> argparse.ArgumentParser:

@@ -1,7 +1,6 @@
 """FastStream worker that executes durable FoodMind chat commands."""
 
 import json
-import logging
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
@@ -10,6 +9,7 @@ from elasticsearch import AsyncElasticsearch
 from faststream import FastStream
 from faststream.nats import NatsBroker
 from prometheus_client import start_http_server
+import structlog
 
 from app.agents.orchestrator import FoodMindOrchestrator
 from app.evaluation.artifacts import EvaluationArtifactRepository
@@ -20,12 +20,11 @@ from app.messaging.broker import (
 )
 from app.messaging.models import ChatCommand, ChatEventName, ChatExecutionEvent
 from app.observability import metrics
+from app.observability.structured_logging import configure_structlog
 from app.observability.tracing import tracing
 from app.services.chat_processor import ChatProcessor
 from app.settings import get_settings
 
-
-logger = logging.getLogger(__name__)
 settings = get_settings()
 broker = NatsBroker(settings.NATS_URL, name="foodmind-chat-worker")
 app = FastStream(broker)
@@ -48,7 +47,10 @@ class WorkerResources:
             artifact = await EvaluationArtifactRepository().load("retrieval")
             retrieval_approach = artifact.best_approach
         except Exception as error:
-            logger.warning("Retrieval evaluation artifact is unavailable: %s", error)
+            structlog.get_logger(__name__).warning(
+                "retrieval_evaluation_artifact_unavailable",
+                error=str(error),
+            )
         self.processor = ChatProcessor(
             elasticsearch=self.elasticsearch,
             orchestrator=FoodMindOrchestrator(),
@@ -112,7 +114,10 @@ async def process_chat_command(command: ChatCommand) -> None:
 
         result = await processor.process(command, publish_progress)
     except Exception:
-        logger.exception("Chat command %s failed", command.execution_id)
+        structlog.get_logger(__name__).exception(
+            "chat_command_failed",
+            execution_id=str(command.execution_id),
+        )
         metrics.record_worker_command(
             outcome="error", duration_seconds=perf_counter() - started
         )
@@ -149,6 +154,7 @@ async def close_resources() -> None:
 async def configure_observability() -> None:
     """Expose worker metrics and configure background-worker tracing."""
     global metrics_server
+    configure_structlog()
     if metrics_server is None:
         metrics_server = start_http_server(9100)
     tracing.configure()
