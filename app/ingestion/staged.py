@@ -294,11 +294,12 @@ def _discard_incompatible_legacy_pending_packages(
 def process_source_batches(source: SourceName, config: StagedIngestionConfig) -> int:
     """Write an archive to durable Parquet through small recoverable dlt runs.
 
-    Each call to ``pipeline.run`` commits one source batch.  At startup dlt
-    first finishes any package left pending by an interrupted pod; completed
-    package count then identifies the already committed leading batches.  A
-    retry may scan the compressed input to that point, but it never rebuilds
-    or reloads the completed normalized data.
+    Each call to ``pipeline.run`` commits one source batch to the Parquet
+    destination. Completed Parquet files, rather than local dlt load state,
+    identify the already committed leading batches. A retry may scan the
+    compressed input to that point, but it never rebuilds or reloads the
+    completed normalized data. This lets every Kubernetes task use an
+    independent ephemeral working directory.
     """
     if source == "wikidata":
         raise ValueError("Wikidata uses its dedicated staged flow")
@@ -306,8 +307,7 @@ def process_source_batches(source: SourceName, config: StagedIngestionConfig) ->
         logger = structlog.get_logger(__name__)
         pipeline = create_pipeline(source, config)
         _discard_incompatible_legacy_pending_packages(source, config, pipeline)
-        pipeline.load()
-        completed_batches = len(pipeline.list_completed_load_packages())
+        completed_batches = len(_parquet_paths(source, config))
         logger.info(
             "dlt_parquet_batch_processing_started",
             source=source,

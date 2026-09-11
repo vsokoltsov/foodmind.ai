@@ -6,10 +6,10 @@ concurrency:
   limit: 1
   behavior: QUEUE
 
-# Each task has its own pod. The source archive and dlt working state live on
-# the durable task-data PVC while dlt writes normalized Parquet directly to
-# GCS. A failed pod can therefore resume completed dlt packages without a GKE
-# GCS FUSE CSI add-on.
+# Each task has its own pod and restores source data from GCS. Parquet is the
+# durable checkpoint: a retry counts the completed files and skips their input
+# batches. No task pod mounts Kestra's ReadWriteOnce PVC, so it can schedule on
+# any cluster node.
 tasks:
   - id: download_archive
     type: io.kestra.plugin.kubernetes.core.PodCreate
@@ -41,10 +41,11 @@ tasks:
             requests: {cpu: 250m, memory: 512Mi}
             limits: {cpu: "1", memory: 1Gi}
           volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
+            - {name: source-data, mountPath: /data}
+            - {name: dlt-state, mountPath: /dlt}
       volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
+        - {name: source-data, emptyDir: {sizeLimit: 20Gi}}
+        - {name: dlt-state, emptyDir: {sizeLimit: 1Gi}}
 
   - id: process_parquet_batches
     type: io.kestra.plugin.kubernetes.core.PodCreate
@@ -77,10 +78,11 @@ tasks:
             requests: {cpu: 500m, memory: 1Gi}
             limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
+            - {name: source-data, mountPath: /data}
+            - {name: dlt-state, mountPath: /dlt}
       volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
+        - {name: source-data, emptyDir: {sizeLimit: 20Gi}}
+        - {name: dlt-state, emptyDir: {sizeLimit: 1Gi}}
 
   - id: index_elasticsearch
     type: io.kestra.plugin.kubernetes.core.PodCreate
@@ -112,10 +114,11 @@ tasks:
             requests: {cpu: 250m, memory: 1Gi}
             limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
+            - {name: source-data, mountPath: /data}
+            - {name: dlt-state, mountPath: /dlt}
       volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
+        - {name: source-data, emptyDir: {sizeLimit: 20Gi}}
+        - {name: dlt-state, emptyDir: {sizeLimit: 1Gi}}
 
   - id: validate_counts
     type: io.kestra.plugin.kubernetes.core.PodCreate
@@ -147,7 +150,8 @@ tasks:
             requests: {cpu: 250m, memory: 1Gi}
             limits: {cpu: "2", memory: 3Gi}
           volumeMounts:
-            - {name: task-data, mountPath: /data, subPath: data}
-            - {name: task-data, mountPath: /dlt, subPath: dlt}
+            - {name: source-data, mountPath: /data}
+            - {name: dlt-state, mountPath: /dlt}
       volumes:
-        - {name: task-data, persistentVolumeClaim: {claimName: kestra-task-data}}
+        - {name: source-data, emptyDir: {sizeLimit: 20Gi}}
+        - {name: dlt-state, emptyDir: {sizeLimit: 1Gi}}
