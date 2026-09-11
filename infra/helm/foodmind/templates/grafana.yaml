@@ -51,6 +51,10 @@ kind: Deployment
 metadata: {name: grafana}
 spec:
   replicas: 1
+  # grafana-data is ReadWriteOnce; a rolling update would briefly run two
+  # pods and cause a GKE Multi-Attach error for the PVC.
+  strategy:
+    type: Recreate
   selector: {matchLabels: {app.kubernetes.io/component: grafana}}
   template:
     metadata: {labels: {app.kubernetes.io/component: grafana}}
