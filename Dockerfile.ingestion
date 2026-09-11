@@ -1,0 +1,9 @@
+ARG PYTHON_BASE_IMAGE=foodmind-python-dependencies:local
+
+FROM ${PYTHON_BASE_IMAGE}
+
+WORKDIR /workspace
+COPY app /workspace/app
+COPY cmd /workspace/cmd
+
+ENV PYTHONPATH=/workspace

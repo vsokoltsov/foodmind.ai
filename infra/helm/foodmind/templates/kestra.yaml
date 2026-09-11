@@ -23,9 +23,6 @@ data:
         gcs:
           bucket: ${GCS_BUCKET}
       tasks:
-        # Process-runner task directories live on the persistent task-data
-        # volume. Keeping them on the container filesystem can evict Kestra
-        # while large ingestion files are processed.
         tmp-dir: {path: /tmp/kestra-wd}
       url: ${KESTRA_URL}
 ---
@@ -124,9 +121,8 @@ spec:
             - {name: KESTRA_POSTGRES_USER, value: kestra}
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
           volumeMounts: [{name: config, mountPath: /etc/kestra}]
-        # The Process task runner executes ingestion commands in the Kestra
-        # pod. Prepare the persistent directories before that server starts,
-        # so large raw downloads and dlt staging never consume node-local disk.
+        # Prepare Kestra's own persistent task directories. Source ingestion
+        # runs in isolated Kubernetes pods and does not mount this RWO claim.
         - name: prepare-task-data
           image: busybox:1.36
           command:
@@ -150,11 +146,11 @@ spec:
             - {name: KESTRA_POSTGRES_PASSWORD, valueFrom: {secretKeyRef: {name: {{ .Values.runtimeSecretName | quote }}, key: KESTRA_POSTGRES_PASSWORD}}}
             - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
             - {name: GCS_PREFIX, value: foodmind/ingestion}
-            # Flow definitions use this image for isolated Kubernetes task
-            # pods. It contains the ingestion CLI and its Python dependencies.
+            # Flow definitions use a small dedicated Python image for isolated
+            # Kubernetes task pods. Keep the Kestra control-plane image lean.
             # Kestra only exposes variables prefixed with ENV_ to Pebble
             # expressions using its lower-case, underscore-separated name.
-            - {name: ENV_FOODMIND_INGESTION_IMAGE, value: {{ required "images.kestra is required" .Values.images.kestra | quote }}}
+            - {name: ENV_FOODMIND_INGESTION_IMAGE, value: {{ required "images.ingestion is required" .Values.images.ingestion | quote }}}
           resources:
             {{- toYaml .Values.kestra.resources | nindent 12 }}
           volumeMounts:

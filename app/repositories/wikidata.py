@@ -39,6 +39,10 @@ class WikidataFoodRepository:
                 for document in documents
             ),
             raise_on_error=True,
+            max_retries=5,
+            initial_backoff=1,
+            max_backoff=30,
+            request_timeout=120,
         )
 
     async def get_by_id(self, entity_id: str) -> FoodEntity | None:
@@ -67,12 +71,29 @@ class WikidataFoodRepository:
             filters.append({"term": {"countries.id": query.country_id}})
         body: dict[str, object] = {"bool": {"filter": filters}}
         if query.text:
-            body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "aliases"]}}]  # type: ignore[index]
+            body["bool"]["must"] = [
+                {
+                    "multi_match": {
+                        "query": query.text,
+                        "fields": ["label", "description", "aliases"],
+                    }
+                }
+            ]  # type: ignore[index]
         retriever = self.hybrid_retriever.build(body, query)
         if retriever is not None:
-            response = await self.client.search(index=self.index_name, retriever=retriever, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+            response = await self.client.search(
+                index=self.index_name,
+                retriever=retriever,
+                from_=query.offset,
+                size=self.reranker.candidate_size(query.limit),
+            )
         else:
-            response = await self.client.search(index=self.index_name, query=body, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+            response = await self.client.search(
+                index=self.index_name,
+                query=body,
+                from_=query.offset,
+                size=self.reranker.candidate_size(query.limit),
+            )
         hits = response["hits"]["hits"]
         if query.rerank:
             hits = self.reranker.rerank(hits, query.text, query.limit)

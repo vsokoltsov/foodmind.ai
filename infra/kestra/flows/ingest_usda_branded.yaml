@@ -1,50 +1,120 @@
 id: ingest_usda_branded
 namespace: foodmind
-description: Persist USDA Branded Foods as durable GCS Parquet, then index Elasticsearch.
+description: Stream USDA Branded Foods to durable GCS Parquet and Elasticsearch.
 
 concurrency:
   limit: 1
   behavior: QUEUE
 
 tasks:
-  - id: usda_branded_pipeline
-    type: io.kestra.plugin.core.flow.WorkingDirectory
-    tasks:
-      - id: download_archive
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - >-
-            cd /workspace && python /workspace/cmd/ingestion.py stage usda-branded download
-            --branded-path /data/branded.json.zip
-            --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+  - id: download_archive
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT30M
+    waitRunning: PT2H
+    retry: {type: constant, interval: PT1M, maxAttempts: 3}
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              python /workspace/cmd/ingestion.py stage usda-branded download
+              --branded-path /data/branded.json.zip
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          env:
+            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
+            - {name: GCS_PREFIX, value: foodmind/ingestion}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi, ephemeral-storage: 1Gi}
+            limits: {cpu: "1", memory: 1Gi, ephemeral-storage: 3Gi}
+          volumeMounts: [{name: state, mountPath: /dlt}]
+      volumes: [{name: state, emptyDir: {sizeLimit: 1Gi}}]
 
-      - id: process_parquet_batches
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - >-
-            cd /workspace && python /workspace/cmd/ingestion.py stage usda-branded process
-            --source-batch-size 2000
-            --branded-path /data/branded.json.zip
-            --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+  - id: process_parquet_batches
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT30M
+    waitRunning: PT8H
+    retry: {type: constant, interval: PT1M, maxAttempts: 3}
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              python /workspace/cmd/ingestion.py stage usda-branded process
+              --source-batch-size 25000 --branded-path /data/branded.json.zip
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          env:
+            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
+            - {name: GCS_PREFIX, value: foodmind/ingestion}
+          resources:
+            requests: {cpu: 750m, memory: 2Gi, ephemeral-storage: 2Gi}
+            limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 6Gi}
+          volumeMounts: [{name: state, mountPath: /dlt}]
+      volumes: [{name: state, emptyDir: {sizeLimit: 2Gi}}]
 
-      - id: index_elasticsearch
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - >-
-            cd /workspace && python /workspace/cmd/ingestion.py stage usda-branded index
-            --batch-size 500
-            --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+  - id: index_elasticsearch
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT30M
+    waitRunning: PT6H
+    retry: {type: constant, interval: PT1M, maxAttempts: 3}
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              python /workspace/cmd/ingestion.py stage usda-branded index
+              --batch-size 1000 --branded-path /data/branded.json.zip
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          env:
+            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
+            - {name: GCS_PREFIX, value: foodmind/ingestion}
+          resources:
+            requests: {cpu: 500m, memory: 1Gi, ephemeral-storage: 1Gi}
+            limits: {cpu: "2", memory: 3Gi, ephemeral-storage: 4Gi}
+          volumeMounts: [{name: state, mountPath: /dlt}]
+      volumes: [{name: state, emptyDir: {sizeLimit: 1Gi}}]
 
-      - id: validate_counts
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - >-
-            cd /workspace && python /workspace/cmd/ingestion.py stage usda-branded validate
-            --batch-size 500
-            --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-pluginDefaults:
-  - type: io.kestra.plugin.scripts.shell.Commands
-    values:
-      taskRunner:
-        type: io.kestra.plugin.core.runner.Process
+  - id: validate_counts
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT30M
+    waitRunning: PT1H
+    retry: {type: constant, interval: PT1M, maxAttempts: 3}
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              python /workspace/cmd/ingestion.py stage usda-branded validate
+              --batch-size 1000 --branded-path /data/branded.json.zip
+              --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          env:
+            - {name: INGESTION_ARTIFACT_STORAGE, value: gcs}
+            - {name: GCS_PREFIX, value: foodmind/ingestion}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi, ephemeral-storage: 512Mi}
+            limits: {cpu: "1", memory: 1Gi, ephemeral-storage: 2Gi}
+          volumeMounts: [{name: state, mountPath: /dlt}]
+      volumes: [{name: state, emptyDir: {sizeLimit: 1Gi}}]

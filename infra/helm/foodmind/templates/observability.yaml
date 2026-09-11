@@ -38,6 +38,7 @@ spec:
           image: {{ .Values.images.prometheus | quote }}
           args: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
           ports: [{name: http, containerPort: 9090}]
+          resources: {{- toYaml .Values.prometheus.resources | nindent 12 }}
           volumeMounts:
             - {name: config, mountPath: /etc/prometheus}
             - {name: data, mountPath: /prometheus}
@@ -95,6 +96,7 @@ spec:
           image: {{ .Values.images.tempo | quote }}
           args: ["-config.file=/etc/tempo/tempo.yml"]
           ports: [{name: http, containerPort: 3200}, {name: otlp-http, containerPort: 4318}]
+          resources: {{- toYaml .Values.tempo.resources | nindent 12 }}
           volumeMounts:
             - {name: config, mountPath: /etc/tempo}
             - {name: data, mountPath: /var/tempo}

@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 from collections.abc import Callable
 from pathlib import Path
 from zipfile import ZipFile
@@ -18,6 +19,7 @@ def reader() -> USDAFoodDataReader:
 @pytest.fixture
 def archive_factory(tmp_path: Path) -> Callable[[str, object], Path]:
     """Create a ZIP archive containing one JSON document."""
+
     def create(name: str, payload: object) -> Path:
         archive_path = tmp_path / f"{name}.json.zip"
         with ZipFile(archive_path, "w") as archive:
@@ -103,6 +105,29 @@ def test_streams_branded_foods(
     assert foods[0].fdc_id == 1106304
     assert foods[0].label_nutrients.calories is not None
     assert foods[0].label_nutrients.calories.value == 160
+
+
+def test_streams_foundation_foods_from_an_open_zip_object(
+    reader: USDAFoodDataReader,
+    foundation_record: dict[str, object],
+) -> None:
+    """A seekable GCS object stream must not require a local archive copy."""
+    compressed_export = BytesIO()
+    with ZipFile(compressed_export, "w") as archive:
+        archive.writestr(
+            "foundation.json",
+            json.dumps({"FoundationFoods": [foundation_record]}),
+        )
+    compressed_export.seek(0)
+
+    foods = list(
+        reader.iter_foundation_foods_stream(
+            compressed_export,
+            source_name="gs://bucket/foundation.zip",
+        )
+    )
+
+    assert [food.fdc_id for food in foods] == [321358]
 
 
 def test_streams_branded_food_without_optional_dates(

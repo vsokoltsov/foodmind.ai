@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TypeVar
+from typing import BinaryIO, TypeVar
 from zipfile import ZipFile
 
 import ijson
@@ -31,6 +31,17 @@ class USDAFoodDataReader:
             model=FoundationFood,
         )
 
+    def iter_foundation_foods_stream(
+        self, compressed_export: BinaryIO, *, source_name: str
+    ) -> Iterator[FoundationFood]:
+        """Yield Foundation Foods directly from a seekable remote ZIP stream."""
+        yield from self._iter_foods_stream(
+            compressed_export,
+            source_name=source_name,
+            collection="FoundationFoods",
+            model=FoundationFood,
+        )
+
     def iter_branded_foods(self, archive_path: Path) -> Iterator[BrandedFood]:
         """Yield validated Branded Food records from a USDA archive.
 
@@ -46,6 +57,17 @@ class USDAFoodDataReader:
             model=BrandedFood,
         )
 
+    def iter_branded_foods_stream(
+        self, compressed_export: BinaryIO, *, source_name: str
+    ) -> Iterator[BrandedFood]:
+        """Yield Branded Foods directly from a seekable remote ZIP stream."""
+        yield from self._iter_foods_stream(
+            compressed_export,
+            source_name=source_name,
+            collection="BrandedFoods",
+            model=BrandedFood,
+        )
+
     def _iter_foods(
         self,
         archive_path: Path,
@@ -54,7 +76,24 @@ class USDAFoodDataReader:
         model: type[FoodModelT],
     ) -> Iterator[FoodModelT]:
         """Stream one USDA collection and validate each non-null record."""
-        with ZipFile(archive_path) as archive:
+        with archive_path.open("rb") as compressed_export:
+            yield from self._iter_foods_stream(
+                compressed_export,
+                source_name=str(archive_path),
+                collection=collection,
+                model=model,
+            )
+
+    def _iter_foods_stream(
+        self,
+        compressed_export: BinaryIO,
+        *,
+        source_name: str,
+        collection: str,
+        model: type[FoodModelT],
+    ) -> Iterator[FoodModelT]:
+        """Stream one collection from an open local or remote ZIP file."""
+        with ZipFile(compressed_export) as archive:
             json_members = [
                 member
                 for member in archive.infolist()
@@ -65,7 +104,7 @@ class USDAFoodDataReader:
             if len(json_members) != 1:
                 names = [member.filename for member in json_members]
                 raise ValueError(
-                    f"Expected exactly one JSON file in {archive_path}, found {names}"
+                    f"Expected exactly one JSON file in {source_name}, found {names}"
                 )
 
             with archive.open(json_members[0]) as json_file:

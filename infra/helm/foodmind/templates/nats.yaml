@@ -48,6 +48,7 @@ spec:
           ports: [{name: client, containerPort: 4222}, {name: monitor, containerPort: 8222}]
           volumeMounts: [{name: data, mountPath: /data}]
           readinessProbe: {httpGet: {path: /healthz, port: monitor}}
+          resources: {{- toYaml .Values.nats.resources | nindent 12 }}
   volumeClaimTemplates:
     - metadata: {name: data}
       spec:
@@ -93,5 +94,6 @@ spec:
           ports: [{name: http, containerPort: 31311}]
           args: ["--nats-cli-contexts=/nats-contexts"]
           volumeMounts: [{name: contexts, mountPath: /nats-contexts, readOnly: true}]
+          resources: {{- toYaml .Values.natsUi.resources | nindent 12 }}
       volumes: [{name: contexts, configMap: {name: nats-ui-context}}]
 {{- end }}

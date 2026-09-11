@@ -4,22 +4,38 @@ description: Run all FoodMind source pipelines with bounded parallelism.
 
 tasks:
   - id: elasticsearch_preflight
-    type: io.kestra.plugin.scripts.shell.Commands
-    taskRunner:
-      type: io.kestra.plugin.core.runner.Process
-    commands:
-      - >-
-        python -c "import base64, os, urllib.parse, urllib.request;
-        connection = urllib.parse.urlsplit(os.environ['ELASTICSEARCH_URL']);
-        authority = connection.hostname + (f':{connection.port}' if connection.port else '');
-        health_url = urllib.parse.urlunsplit((connection.scheme, authority, '/_cluster/health', '', ''));
-        credentials = f'{urllib.parse.unquote(connection.username or \"\")}:{urllib.parse.unquote(connection.password or \"\")}'.encode();
-        request = urllib.request.Request(health_url, headers={'Authorization': f'Basic {base64.b64encode(credentials).decode()}'});
-        urllib.request.urlopen(request, timeout=10).read()"
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT15M
+    waitRunning: PT10M
+    retry: {type: constant, interval: PT30S, maxAttempts: 3}
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: preflight
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["python", "-c"]
+          args:
+            - >-
+              import base64, os, urllib.parse, urllib.request;
+              connection = urllib.parse.urlsplit(os.environ['ELASTICSEARCH_URL']);
+              authority = connection.hostname + (f':{connection.port}' if connection.port else '');
+              health_url = urllib.parse.urlunsplit((connection.scheme, authority, '/_cluster/health', '', ''));
+              credentials = f'{urllib.parse.unquote(connection.username or "")}:{urllib.parse.unquote(connection.password or "")}'.encode();
+              request = urllib.request.Request(health_url, headers={'Authorization': f'Basic {base64.b64encode(credentials).decode()}'});
+              urllib.request.urlopen(request, timeout=10).read()
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          resources:
+            requests: {cpu: 50m, memory: 128Mi, ephemeral-storage: 128Mi}
+            limits: {cpu: 250m, memory: 256Mi, ephemeral-storage: 512Mi}
 
   - id: ingest_sources
     type: io.kestra.plugin.core.flow.Parallel
-    concurrent: 4
+    # The low-cost node pool cannot safely run four data-heavy pipelines at
+    # once. Two isolated pods preserve useful concurrency without starving the
+    # Kestra control plane and application workloads.
+    concurrent: 2
     tasks:
       - id: wikidata
         type: io.kestra.plugin.core.flow.Subflow

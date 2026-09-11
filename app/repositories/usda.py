@@ -48,6 +48,10 @@ class USDARepository:
                 for document in documents
             ),
             raise_on_error=True,
+            max_retries=5,
+            initial_backoff=1,
+            max_backoff=30,
+            request_timeout=120,
         )
 
     async def save_branded(self, foods: list[BrandedFoodAggregate]) -> None:
@@ -69,25 +73,44 @@ class USDARepository:
                 for document in documents
             ),
             raise_on_error=True,
+            max_retries=5,
+            initial_backoff=1,
+            max_backoff=30,
+            request_timeout=120,
         )
 
-    async def get_foundation_by_id(self, fdc_id: int | str) -> FoundationFoodAggregate | None:
+    async def get_foundation_by_id(
+        self, fdc_id: int | str
+    ) -> FoundationFoodAggregate | None:
         """Retrieve one USDA Foundation Food by FDC identifier."""
-        return await self._get(self.foundation_index_name, fdc_id, FoundationFoodAggregate)
+        return await self._get(
+            self.foundation_index_name, fdc_id, FoundationFoodAggregate
+        )
 
     async def get_branded_by_id(self, fdc_id: int | str) -> BrandedFoodAggregate | None:
         """Retrieve one USDA Branded Food by FDC identifier."""
         return await self._get(self.branded_index_name, fdc_id, BrandedFoodAggregate)
 
-    async def search_foundations(self, query: USDAFoodQuery) -> list[FoundationFoodAggregate]:
+    async def search_foundations(
+        self, query: USDAFoodQuery
+    ) -> list[FoundationFoodAggregate]:
         """Search USDA Foundation Foods by text and category."""
-        return await self._search(self.foundation_index_name, query, FoundationFoodAggregate)
+        return await self._search(
+            self.foundation_index_name, query, FoundationFoodAggregate
+        )
 
-    async def search_branded(self, query: BrandedFoodQuery) -> list[BrandedFoodAggregate]:
+    async def search_branded(
+        self, query: BrandedFoodQuery
+    ) -> list[BrandedFoodAggregate]:
         """Search USDA Branded Foods by text, category, and brand."""
         return await self._search(self.branded_index_name, query, BrandedFoodAggregate)
 
-    async def _get(self, index: str, fdc_id: int | str, model: type[FoundationFoodAggregate] | type[BrandedFoodAggregate]):
+    async def _get(
+        self,
+        index: str,
+        fdc_id: int | str,
+        model: type[FoundationFoodAggregate] | type[BrandedFoodAggregate],
+    ):
         try:
             response = await self.client.get(index=index, id=f"usda-fdc:{fdc_id}")
         except NotFoundError:
@@ -96,7 +119,12 @@ class USDARepository:
             return None
         return model.model_validate(response["_source"])
 
-    async def _search(self, index: str, query: USDAFoodQuery, model: type[FoundationFoodAggregate] | type[BrandedFoodAggregate]):
+    async def _search(
+        self,
+        index: str,
+        query: USDAFoodQuery,
+        model: type[FoundationFoodAggregate] | type[BrandedFoodAggregate],
+    ):
         filters: list[dict[str, object]] = []
         if query.category:
             filters.append({"match": {"category": query.category}})
@@ -104,12 +132,29 @@ class USDARepository:
             filters.append({"term": {"gtin_upc": query.barcode}})
         body: dict[str, object] = {"bool": {"filter": filters}}
         if query.text:
-            body["bool"]["must"] = [{"multi_match": {"query": query.text, "fields": ["label", "description", "category"]}}]  # type: ignore[index]
+            body["bool"]["must"] = [
+                {
+                    "multi_match": {
+                        "query": query.text,
+                        "fields": ["label", "description", "category"],
+                    }
+                }
+            ]  # type: ignore[index]
         retriever = self.hybrid_retriever.build(body, query)
         if retriever is not None:
-            response = await self.client.search(index=index, retriever=retriever, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+            response = await self.client.search(
+                index=index,
+                retriever=retriever,
+                from_=query.offset,
+                size=self.reranker.candidate_size(query.limit),
+            )
         else:
-            response = await self.client.search(index=index, query=body, from_=query.offset, size=self.reranker.candidate_size(query.limit))
+            response = await self.client.search(
+                index=index,
+                query=body,
+                from_=query.offset,
+                size=self.reranker.candidate_size(query.limit),
+            )
         hits = response["hits"]["hits"]
         if query.rerank:
             hits = self.reranker.rerank(hits, query.text, query.limit)

@@ -1,7 +1,8 @@
 # Copy this file outside Git and replace all image and DNS values before deployment.
 images:
   api: europe-west3-docker.pkg.dev/PROJECT_ID/foodmind/api:TAG
-  kestra: europe-west3-docker.pkg.dev/PROJECT_ID/foodmind/kestra:TAG
+  kestra: europe-west3-docker.pkg.dev/PROJECT_ID/foodmind/kestra:runtime-CONTENT_HASH
+  ingestion: europe-west3-docker.pkg.dev/PROJECT_ID/foodmind/ingestion:TAG
 gcpServiceAccount: foodmind-workload@PROJECT_ID.iam.gserviceaccount.com
 cloudSql:
   instanceConnectionName: PROJECT_ID:europe-west3:foodmind-postgres

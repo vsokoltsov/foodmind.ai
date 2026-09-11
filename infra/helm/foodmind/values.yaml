@@ -1,6 +1,7 @@
 images:
   api: ""
   kestra: ""
+  ingestion: ""
   nats: nats:2.11-alpine
   natsUi: ghcr.io/nats-nui/nui:latest
   grafana: grafana/grafana:12.0.2
@@ -36,13 +37,30 @@ kestra:
   basicAuthUsername: admin@foodmind.local
   flowDefinitionsConfigMap: kestra-flow-definitions
   resources:
-    # Raw source archives and dlt state are stored on the task-data PVC, not
-    # the node's ephemeral filesystem. These limits protect the small GKE node
-    # from logs and other unavoidable container-local writes.
-    # Kestra's baseline JVM footprint is about 1.2 GiB. Reserve it so a
-    # separate ingestion pod cannot overcommit the application node.
-    requests: {cpu: 50m, memory: 1536Mi, ephemeral-storage: 512Mi}
+    # Ingestion runs in isolated pods; these resources are only for the server.
+    requests: {cpu: 250m, memory: 1536Mi, ephemeral-storage: 1Gi}
     limits: {cpu: "2", memory: 3Gi, ephemeral-storage: 4Gi}
+
+nats:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi, ephemeral-storage: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi}
+natsUi:
+  resources:
+    requests: {cpu: 25m, memory: 64Mi, ephemeral-storage: 64Mi}
+    limits: {cpu: 250m, memory: 256Mi, ephemeral-storage: 256Mi}
+grafana:
+  resources:
+    requests: {cpu: 50m, memory: 256Mi, ephemeral-storage: 128Mi}
+    limits: {cpu: 500m, memory: 768Mi, ephemeral-storage: 1Gi}
+prometheus:
+  resources:
+    requests: {cpu: 100m, memory: 512Mi, ephemeral-storage: 256Mi}
+    limits: {cpu: "1", memory: 2Gi, ephemeral-storage: 2Gi}
+tempo:
+  resources:
+    requests: {cpu: 50m, memory: 256Mi, ephemeral-storage: 128Mi}
+    limits: {cpu: 500m, memory: 1Gi, ephemeral-storage: 1Gi}
 
 public:
   apiEnabled: true
@@ -56,8 +74,8 @@ public:
 storage:
   className: standard-rwo
   natsSize: 10Gi
-  # Holds source archives and dlt working state. Archive-source normalized data
-  # is written directly to the GCS filesystem destination as Parquet.
+  # Holds Kestra's own temporary Process-runner state. Data ingestion executes
+  # in isolated pods and stores normalized data and checkpoints in GCS.
   kestraTaskDataSize: 50Gi
   grafanaSize: 5Gi
   prometheusSize: 20Gi

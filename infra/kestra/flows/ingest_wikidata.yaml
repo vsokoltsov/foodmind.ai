@@ -1,6 +1,6 @@
 id: ingest_wikidata
 namespace: foodmind
-description: Stage, normalize, and index Wikidata food entities.
+description: Run Wikidata staging and indexing in one isolated Kubernetes pod.
 
 concurrency:
   limit: 1
@@ -8,65 +8,45 @@ concurrency:
 
 tasks:
   - id: wikidata_pipeline
-    type: io.kestra.plugin.core.flow.WorkingDirectory
-    tasks:
-      - id: extract_base_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata extract-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: normalize_base_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata normalize-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: load_base_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata load-base --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: extract_entity_details
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata extract-details --wikidata-batch-size 100 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: normalize_entity_details
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata normalize-details --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: load_entity_details
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata load-details --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: transform_food_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata transform --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: normalize_food_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata normalize-final --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: load_food_entities
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata load-final --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: index_elasticsearch
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata index --batch-size 500 --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-      - id: validate_counts
-        type: io.kestra.plugin.scripts.shell.Commands
-        commands:
-          - cd /workspace && python /workspace/cmd/ingestion.py stage wikidata validate --pipelines-dir /dlt/pipelines --staging-dir /dlt/staging
-
-pluginDefaults:
-  - type: io.kestra.plugin.scripts.shell.Commands
-    values:
-      taskRunner:
-        type: io.kestra.plugin.core.runner.Process
+    type: io.kestra.plugin.kubernetes.core.PodCreate
+    namespace: foodmind
+    waitUntilRunning: PT30M
+    waitRunning: PT6H
+    retry: {type: constant, interval: PT2M, maxAttempts: 3}
+    metadata:
+      labels:
+        app.kubernetes.io/component: foodmind-ingestion
+        foodmind.io/source: wikidata
+    spec:
+      serviceAccountName: foodmind
+      restartPolicy: Never
+      containers:
+        - name: ingestion
+          image: "{{ envs.foodmind_ingestion_image }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              run_stage() {
+                python /workspace/cmd/ingestion.py stage wikidata "$1" \
+                  --wikidata-batch-size 100 \
+                  --pipelines-dir /dlt/pipelines \
+                  --staging-dir /dlt/staging
+              }
+              run_stage extract-base
+              run_stage normalize-base
+              run_stage load-base
+              run_stage extract-details
+              run_stage normalize-details
+              run_stage load-details
+              run_stage transform
+              run_stage normalize-final
+              run_stage load-final
+              run_stage index
+              run_stage validate
+          envFrom: [{secretRef: {name: foodmind-runtime}}]
+          resources:
+            requests: {cpu: 750m, memory: 2Gi, ephemeral-storage: 2Gi}
+            limits: {cpu: "2", memory: 4Gi, ephemeral-storage: 6Gi}
+          volumeMounts: [{name: state, mountPath: /dlt}]
+      volumes: [{name: state, emptyDir: {sizeLimit: 4Gi}}]

@@ -12,7 +12,7 @@ gke_node_count        = 1
 gke_min_node_count    = 1
 gke_max_node_count    = 2
 gke_machine_type      = "e2-highmem-2"
-gke_boot_disk_size_gb = 30
+gke_boot_disk_size_gb = 50
 gke_node_zones        = ["europe-west3-a"]
 
 # Elastic Cloud control-plane key used to provision the managed Elasticsearch cluster.

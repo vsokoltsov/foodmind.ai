@@ -130,9 +130,9 @@ variable "gke_machine_type" {
 }
 
 variable "gke_boot_disk_size_gb" {
-  description = "Boot-disk size for each GKE worker."
+  description = "Boot-disk size for each GKE worker, including image and pod ephemeral storage."
   type        = number
-  default     = 30
+  default     = 50
 }
 
 variable "gke_node_zones" {

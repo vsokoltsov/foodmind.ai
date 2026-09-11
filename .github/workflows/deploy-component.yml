@@ -9,10 +9,17 @@ on:
       image_tag:
         required: true
         type: string
+      kestra_image_tag:
+        required: false
+        type: string
+        default: ""
     outputs:
       image_tag:
         description: Immutable image tag deployed by this component.
         value: ${{ jobs.deploy.outputs.image_tag }}
+      kestra_image_tag:
+        description: Content-addressed Kestra runtime image tag.
+        value: ${{ jobs.deploy.outputs.kestra_image_tag }}
 
 jobs:
   deploy:
@@ -23,6 +30,7 @@ jobs:
       id-token: write
     outputs:
       image_tag: ${{ inputs.image_tag }}
+      kestra_image_tag: ${{ inputs.kestra_image_tag != '' && inputs.kestra_image_tag || inputs.image_tag }}
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
@@ -40,6 +48,8 @@ jobs:
       KESTRA_PUBLIC_IP: ${{ vars.KESTRA_PUBLIC_IP }}
       NATS_UI_PUBLIC_IP: ${{ vars.NATS_UI_PUBLIC_IP }}
       IMAGE_TAG: ${{ inputs.image_tag }}
+      KESTRA_IMAGE_TAG: ${{ inputs.kestra_image_tag != '' && inputs.kestra_image_tag || inputs.image_tag }}
+      INGESTION_IMAGE_TAG: ${{ inputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
 

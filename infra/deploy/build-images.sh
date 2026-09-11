@@ -47,7 +47,7 @@ build_image() {
 
   local -a build_args=()
   local -a output_args=(--load)
-  if [[ "${dockerfile}" == "Dockerfile.api" || "${dockerfile}" == "Dockerfile.ui" ]]; then
+  if [[ "${dockerfile}" == "Dockerfile.api" || "${dockerfile}" == "Dockerfile.ui" || "${dockerfile}" == "Dockerfile.ingestion" ]]; then
     build_args+=(--build-arg "PYTHON_BASE_IMAGE=${dependency_image}")
   fi
   if [[ "${publish}" == "true" ]]; then
@@ -122,6 +122,7 @@ case "${operation}" in
   build)
     build_image "Dockerfile.api" "${repository}/api:${image_tag}" "foodmind-api"
     build_image "Dockerfile.kestra" "${repository}/kestra:${image_tag}" "foodmind-kestra"
+    build_image "Dockerfile.ingestion" "${repository}/ingestion:${image_tag}" "foodmind-ingestion"
     build_image "Dockerfile.ui" "${repository}/ui:${image_tag}" "foodmind-ui"
     docker tag "${repository}/ui:${image_tag}" "${repository}/ui:latest"
     ;;
@@ -130,6 +131,9 @@ case "${operation}" in
     ;;
   kestra)
     build_image "Dockerfile.kestra" "${repository}/kestra:${image_tag}" "foodmind-kestra"
+    ;;
+  ingestion)
+    build_image "Dockerfile.ingestion" "${repository}/ingestion:${image_tag}" "foodmind-ingestion"
     ;;
   ui)
     build_image "Dockerfile.ui" "${repository}/ui:${image_tag}" "foodmind-ui"
@@ -143,6 +147,10 @@ case "${operation}" in
     authenticate_artifact_registry
     build_image "Dockerfile.kestra" "${repository}/kestra:${image_tag}" "foodmind-kestra" true
     ;;
+  publish-ingestion)
+    authenticate_artifact_registry
+    build_image "Dockerfile.ingestion" "${repository}/ingestion:${image_tag}" "foodmind-ingestion" true
+    ;;
   publish-ui)
     authenticate_artifact_registry
     build_image "Dockerfile.ui" "${repository}/ui:${image_tag}" "foodmind-ui" true
@@ -154,6 +162,7 @@ case "${operation}" in
     authenticate_artifact_registry
     docker push "${repository}/api:${image_tag}"
     docker push "${repository}/kestra:${image_tag}"
+    docker push "${repository}/ingestion:${image_tag}"
     docker push "${repository}/ui:${image_tag}"
     docker push "${repository}/ui:latest"
     ;;
@@ -164,6 +173,10 @@ case "${operation}" in
   push-kestra)
     authenticate_artifact_registry
     docker push "${repository}/kestra:${image_tag}"
+    ;;
+  push-ingestion)
+    authenticate_artifact_registry
+    docker push "${repository}/ingestion:${image_tag}"
     ;;
   push-ui)
     authenticate_artifact_registry
@@ -176,7 +189,7 @@ case "${operation}" in
     "${BASH_SOURCE[0]}" push
     ;;
   *)
-    echo "Usage: $0 [dependencies|build|api|kestra|ui|publish-api|publish-kestra|publish-ui|push|push-api|push-kestra|push-ui|all]" >&2
+    echo "Usage: $0 [dependencies|build|api|kestra|ingestion|ui|publish-api|publish-kestra|publish-ingestion|publish-ui|push|push-api|push-kestra|push-ingestion|push-ui|all]" >&2
     exit 2
     ;;
 esac

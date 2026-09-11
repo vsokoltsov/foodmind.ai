@@ -66,7 +66,8 @@ if [[ -z "${elasticsearch_endpoint}" || -z "${elasticsearch_username}" || -z "${
 fi
 
 api_image="${repository}/api:${image_tag}"
-kestra_image="${repository}/kestra:${image_tag}"
+kestra_image="${repository}/kestra:${KESTRA_IMAGE_TAG:-${image_tag}}"
+ingestion_image="${repository}/ingestion:${INGESTION_IMAGE_TAG:-${image_tag}}"
 
 case "${component}" in
   all) release_name="foodmind" ;;
@@ -131,6 +132,7 @@ helm upgrade --install "${release_name}" "${chart_directory}" \
   --set-string component="${component}" \
   --set-string images.api="${api_image}" \
   --set-string images.kestra="${kestra_image}" \
+  --set-string images.ingestion="${ingestion_image}" \
   --set-string cloudSql.instanceConnectionName="${cloud_sql}" \
   --set-string gcpServiceAccount="${gcp_service_account}" \
   --set public.apiEnabled=true \

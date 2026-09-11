@@ -56,15 +56,18 @@ async def prepare_snapshot_index(
     client: AsyncElasticsearch,
     *,
     alias: str,
-    staging_dir: Path,
+    staging_dir: Path | None = None,
 ) -> str:
     """Create a fresh unaliased physical index for one ingestion attempt."""
     aliases = cast(dict[str, Any], await client.indices.get_alias(name=alias))
     active = _active_index(aliases, alias)
     mappings = cast(dict[str, Any], await client.indices.get_mapping(index=active))
     settings = cast(dict[str, Any], await client.indices.get_settings(index=active))
-    schema_version = mappings[active].get("mappings", {}).get("_meta", {}).get(
-        "schema_version", "v1"
+    schema_version = (
+        mappings[active]
+        .get("mappings", {})
+        .get("_meta", {})
+        .get("schema_version", "v1")
     )
     timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     candidate = f"{alias}-{schema_version}-snapshot-{timestamp}-{uuid.uuid4().hex[:8]}"
@@ -73,7 +76,8 @@ async def prepare_snapshot_index(
         mappings=mappings[active]["mappings"],
         settings=_snapshot_settings(settings, active),
     )
-    _write_marker(staging_dir, alias, candidate)
+    if staging_dir is not None:
+        _write_marker(staging_dir, alias, candidate)
     return candidate
 
 
@@ -99,13 +103,11 @@ async def publish_snapshot_index(
     *,
     alias: str,
     candidate: str,
-    staging_dir: Path,
+    staging_dir: Path | None = None,
     aggregate_alias: str = "food-entities",
 ) -> None:
     """Atomically move source and aggregate aliases to a validated candidate."""
-    current_aliases = cast(
-        dict[str, Any], await client.indices.get_alias(name=alias)
-    )
+    current_aliases = cast(dict[str, Any], await client.indices.get_alias(name=alias))
     current_indices = list(current_aliases)
     actions: list[dict[str, Any]] = []
     for index in current_indices:
@@ -136,4 +138,5 @@ async def publish_snapshot_index(
         )
     if actions:
         await client.indices.update_aliases(actions=actions)
-    _marker_path(staging_dir, alias).unlink(missing_ok=True)
+    if staging_dir is not None:
+        _marker_path(staging_dir, alias).unlink(missing_ok=True)

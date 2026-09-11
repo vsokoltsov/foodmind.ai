@@ -74,7 +74,7 @@ def _legacy_parser() -> argparse.ArgumentParser:
     parser.add_argument("--destination", default="duckdb")
     parser.add_argument("--dataset-name", default="foodmind")
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--source-batch-size", type=int, default=2_000)
+    parser.add_argument("--source-batch-size", type=int, default=25_000)
     parser.add_argument("--wikidata-batch-size", type=int, default=100)
     parser.add_argument(
         "--foundation-path",
@@ -102,9 +102,11 @@ def _stage_parser() -> argparse.ArgumentParser:
     parser.add_argument("source", choices=SOURCES)
     parser.add_argument("stage")
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--source-batch-size", type=int, default=2_000)
+    parser.add_argument("--source-batch-size", type=int, default=25_000)
     parser.add_argument("--wikidata-batch-size", type=int, default=100)
-    parser.add_argument("--foundation-path", type=Path, default=Path("foundations.json.zip"))
+    parser.add_argument(
+        "--foundation-path", type=Path, default=Path("foundations.json.zip")
+    )
     parser.add_argument("--branded-path", type=Path, default=Path("branded.json.zip"))
     parser.add_argument(
         "--openfoodfacts-path",
@@ -113,9 +115,7 @@ def _stage_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--pipelines-dir", type=Path, default=Path(".dlt/pipelines"))
     parser.add_argument("--staging-dir", type=Path, default=Path(".dlt/staging"))
-    parser.add_argument(
-        "--normalized-dir", type=Path, default=Path(".dlt/normalized")
-    )
+    parser.add_argument("--normalized-dir", type=Path, default=Path(".dlt/normalized"))
     parser.add_argument("--show-progress", action="store_true")
     parser.add_argument("--force-download", action="store_true")
     return parser
@@ -151,7 +151,9 @@ async def _run_stage(
     """Dispatch one source stage while keeping blocking dlt work off-loop."""
     allowed = WIKIDATA_STAGES if source == "wikidata" else ARCHIVE_STAGES
     if stage not in allowed:
-        raise ValueError(f"Invalid stage {stage!r} for {source}; expected one of {allowed}")
+        raise ValueError(
+            f"Invalid stage {stage!r} for {source}; expected one of {allowed}"
+        )
     logger = structlog.get_logger(__name__)
     logger.info(
         "ingestion_stage_started",

@@ -50,6 +50,8 @@ class OpenFoodFactsReader:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError as error:
-                    raise ValueError(f"Invalid JSON in {source_name} at line {line_number}") from error
+                    raise ValueError(
+                        f"Invalid JSON in {source_name} at line {line_number}"
+                    ) from error
 
                 yield OpenFoodFactsProduct.model_validate(record)

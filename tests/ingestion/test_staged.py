@@ -17,14 +17,15 @@ from app.ingestion.staged import (
 class ArtifactStore:
     """Minimal artifact store double that records archive restoration."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, remote_exists: bool = True) -> None:
         """Create an artifact store containing one remote archive."""
+        self.remote_exists = remote_exists
         self.downloaded: list[tuple[str, Path]] = []
         self.uploaded: list[tuple[Path, str]] = []
 
     async def exists(self, key: str) -> bool:
         """Report that the archive already exists remotely."""
-        return key == "usda-foundation/foundations.json.zip"
+        return self.remote_exists and key == "usda-foundation/foundations.json.zip"
 
     async def upload(self, local_path: Path, key: str) -> None:
         """Record an upload request."""
@@ -44,12 +45,12 @@ def artifact_store() -> ArtifactStore:
     return ArtifactStore()
 
 
-def test_download_stage_restores_existing_gcs_artifact(
+def test_download_stage_keeps_existing_gcs_artifact_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     artifact_store: ArtifactStore,
 ) -> None:
-    """Restore an absent local archive instead of downloading the public export."""
+    """An existing GCS archive must not consume pod-local ephemeral storage."""
     monkeypatch.setattr(
         "app.ingestion.staged.create_artifact_store",
         lambda _config: artifact_store,
@@ -64,10 +65,34 @@ def test_download_stage_restores_existing_gcs_artifact(
     )
 
     assert result == archive
-    assert archive.read_bytes() == b"archive"
-    assert artifact_store.downloaded == [
-        ("usda-foundation/foundations.json.zip", archive)
-    ]
+    assert not archive.exists()
+    assert artifact_store.downloaded == []
+    assert artifact_store.uploaded == []
+
+
+def test_download_stage_refuses_a_pod_local_gcs_bootstrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing remote export must fail instead of filling ephemeral storage."""
+    artifact_store = ArtifactStore(remote_exists=False)
+    monkeypatch.setattr(
+        "app.ingestion.staged.create_artifact_store",
+        lambda _config: artifact_store,
+    )
+
+    with pytest.raises(FileNotFoundError, match="upload it"):
+        asyncio.run(
+            download_source(
+                "usda-foundation",
+                StagedIngestionConfig(
+                    foundation_archive=tmp_path / "foundations.json.zip",
+                    artifact_storage="gcs",
+                ),
+            )
+        )
+
+    assert artifact_store.downloaded == []
     assert artifact_store.uploaded == []
 
 
@@ -75,8 +100,9 @@ def test_source_pipeline_lock_rejects_a_concurrent_stage(tmp_path: Path) -> None
     """A duplicate Kestra retry must not mutate the same dlt pipeline."""
     config = StagedIngestionConfig(pipelines_dir=tmp_path / "pipelines")
 
-    with source_pipeline_lock("openfoodfacts", config), pytest.raises(
-        RuntimeError, match="already running"
+    with (
+        source_pipeline_lock("openfoodfacts", config),
+        pytest.raises(RuntimeError, match="already running"),
     ):
         with source_pipeline_lock("openfoodfacts", config):
             pass
@@ -97,11 +123,13 @@ def test_process_source_batches_writes_small_durable_parquet_loads(
         lambda _source, _config: iter(records),
     )
     config = StagedIngestionConfig(
+        openfoodfacts_archive=tmp_path / "openfoodfacts.jsonl.gz",
         pipelines_dir=tmp_path / "pipelines",
         staging_dir=tmp_path / "state",
         normalized_dir=tmp_path / "normalized",
         source_batch_size=2,
     )
+    config.openfoodfacts_archive.write_bytes(b"source-v1")
 
     assert process_source_batches("openfoodfacts", config) == 3
     assert len(_parquet_paths("openfoodfacts", config)) == 2
@@ -121,10 +149,12 @@ def test_process_source_batches_discards_pre_parquet_duckdb_pending_packages(
         lambda _source, _config: iter([{"id": "one", "label": "One", "code": "one"}]),
     )
     config = StagedIngestionConfig(
+        openfoodfacts_archive=tmp_path / "openfoodfacts.jsonl.gz",
         pipelines_dir=tmp_path / "pipelines",
         staging_dir=tmp_path / "state",
         normalized_dir=tmp_path / "normalized",
     )
+    config.openfoodfacts_archive.write_bytes(b"source-v1")
     legacy_job = (
         config.pipelines_dir
         / "openfoodfacts_products"
@@ -140,3 +170,63 @@ def test_process_source_batches_discards_pre_parquet_duckdb_pending_packages(
     assert process_source_batches("openfoodfacts", config) == 1
     assert not legacy_job.exists()
     assert len(_parquet_paths("openfoodfacts", config)) == 1
+
+
+def test_changed_source_generation_uses_a_new_parquet_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced upstream archive must never append to the preceding snapshot."""
+    archive = tmp_path / "openfoodfacts.jsonl.gz"
+    records = [{"id": "one", "label": "One", "code": "one"}]
+    monkeypatch.setattr(
+        "app.ingestion.staged._archive_documents",
+        lambda _source, _config: iter(records),
+    )
+    config = StagedIngestionConfig(
+        openfoodfacts_archive=archive,
+        pipelines_dir=tmp_path / "pipelines",
+        staging_dir=tmp_path / "state",
+        normalized_dir=tmp_path / "normalized",
+        source_batch_size=1,
+    )
+    archive.write_bytes(b"source-v1")
+    assert process_source_batches("openfoodfacts", config) == 1
+    first_paths = _parquet_paths("openfoodfacts", config)
+
+    archive.write_bytes(b"source-version-two")
+    assert process_source_batches("openfoodfacts", config) == 1
+    second_paths = _parquet_paths("openfoodfacts", config)
+
+    assert first_paths != second_paths
+    assert all("runs/openfoodfacts" in str(path) for path in second_paths)
+
+
+def test_changed_batch_size_uses_a_new_parquet_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tuning change must not mix new Parquet batches with an older layout."""
+    archive = tmp_path / "openfoodfacts.jsonl.gz"
+    archive.write_bytes(b"source-v1")
+    records = [{"id": "one", "label": "One", "code": "one"}]
+    monkeypatch.setattr(
+        "app.ingestion.staged._archive_documents",
+        lambda _source, _config: iter(records),
+    )
+    common = {
+        "openfoodfacts_archive": archive,
+        "pipelines_dir": tmp_path / "pipelines",
+        "staging_dir": tmp_path / "state",
+        "normalized_dir": tmp_path / "normalized",
+    }
+
+    first_config = StagedIngestionConfig(**common, source_batch_size=1)
+    assert process_source_batches("openfoodfacts", first_config) == 1
+    first_paths = _parquet_paths("openfoodfacts", first_config)
+
+    second_config = StagedIngestionConfig(**common, source_batch_size=2)
+    assert process_source_batches("openfoodfacts", second_config) == 1
+    second_paths = _parquet_paths("openfoodfacts", second_config)
+
+    assert first_paths != second_paths
