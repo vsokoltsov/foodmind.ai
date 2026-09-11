@@ -96,7 +96,8 @@ tasks:
     namespace: foodmind
     waitUntilRunning: PT30M
     waitRunning: PT1H
-    retry: {type: constant, interval: PT1M, maxAttempts: 3}
+    # Validation failures are deterministic; retrying cannot change the candidate.
+    retry: {type: constant, interval: PT1M, maxAttempts: 1}
     spec:
       serviceAccountName: foodmind
       restartPolicy: Never

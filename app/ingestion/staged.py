@@ -2,6 +2,8 @@
 
 import json
 import re
+import sqlite3
+import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -864,6 +866,42 @@ def _parquet_row_count(
     return total
 
 
+def _parquet_distinct_id_count(
+    paths: Sequence[Path | str], config: StagedIngestionConfig
+) -> tuple[int, int]:
+    """Return ``(rows, distinct_ids)`` without holding all IDs in RAM.
+
+    Archive sources use the canonical ``id`` as the Elasticsearch document ID.
+    A source export can contain repeated IDs, which Elasticsearch correctly
+    upserts rather than storing as multiple documents.  A disk-backed SQLite
+    set keeps validation exact while remaining safe for multi-million-row
+    exports and remote (GCS) Parquet files.
+    """
+    config.staging_dir.mkdir(parents=True, exist_ok=True)
+    filesystem = _gcs_filesystem(config) if config.artifact_storage == "gcs" else None
+    with tempfile.TemporaryDirectory(dir=config.staging_dir) as temporary_dir:
+        database_path = Path(temporary_dir) / "distinct-ids.sqlite3"
+        with sqlite3.connect(database_path) as database:
+            database.execute("PRAGMA journal_mode=OFF")
+            database.execute("PRAGMA synchronous=OFF")
+            database.execute("CREATE TABLE ids (id TEXT PRIMARY KEY)")
+            rows = 0
+            for path in paths:
+                with _parquet_file(path, config, filesystem=filesystem) as source:
+                    parquet_file = parquet.ParquetFile(source)
+                    for record_batch in parquet_file.iter_batches(
+                        columns=["id"], batch_size=65_536
+                    ):
+                        values = record_batch.column(0).to_pylist()
+                        rows += len(values)
+                        database.executemany(
+                            "INSERT OR IGNORE INTO ids (id) VALUES (?)",
+                            ((str(value),) for value in values),
+                        )
+            distinct_ids = int(database.execute("SELECT COUNT(*) FROM ids").fetchone()[0])
+    return rows, distinct_ids
+
+
 def iter_parquet_models(
     paths: list[Path | str],
     model: type[ModelT],
@@ -1145,8 +1183,13 @@ async def validate_staged_source(
         candidate_from_manifest = None
     else:
         manifest = _require_current_manifest(source, config)
-        staged_rows = manifest.total_rows
-        staged = staged_rows
+        paths = _parquet_paths(source, config)
+        staged_rows, staged = _parquet_distinct_id_count(paths, config)
+        if staged_rows != manifest.total_rows:
+            raise RuntimeError(
+                f"{source} staging row mismatch: manifest={manifest.total_rows}, "
+                f"parquet={staged_rows}"
+            )
         candidate_from_manifest = manifest.elasticsearch.candidate_index
         if candidate_from_manifest is None:
             raise RuntimeError(f"No Elasticsearch candidate exists for {source}")
@@ -1193,6 +1236,7 @@ async def validate_staged_source(
         source=source,
         staging_rows=staged_rows,
         unique_ids=staged,
+        duplicate_ids=staged_rows - staged,
         indexed=indexed,
     )
     return staged, indexed
