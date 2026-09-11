@@ -142,6 +142,7 @@ helm upgrade --install "${release_name}" "${chart_directory}" \
   --set-string public.kestraUrl="${kestra_public_url}" \
   --set-string kestra.basicAuthUsername="${kestra_basic_auth_username}" \
   --take-ownership \
+  --force-conflicts \
   --wait --timeout 15m
 
 if [[ "${component}" != "all" ]]; then
