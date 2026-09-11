@@ -1,44 +1,27 @@
-# GKE deployment
+# FoodMind Helm chart
 
-Terraform in `infra/terraform` creates the Google Cloud network, GKE cluster,
-Artifact Registry, Cloud SQL, Cloud Run UI, Vertex AI access, and managed
-Elasticsearch/Kibana in Elastic Cloud. Elastic Cloud is used because Google Cloud
-has no native managed Elasticsearch offering.
+The chart is deployed by the declarative Terraform root in `infra/deployment`.
+Do not invoke `helm upgrade` directly: each component is a Terraform-managed
+Helm release with an isolated GCS state prefix.
 
-1. Run `EC_API_KEY=... infra/terraform/list-elastic-templates.sh gcp-europe-west3`,
-   choose a listed non-deprecated template ID, and apply `infra/terraform` with
-   that ID and `elastic_cloud_api_key` in its local `terraform.tfvars`.
-2. Build and push immutable images with
-   `IMAGE_TAG=<git-sha> infra/deploy/build-images.sh`.
-3. Run Terraform again with `ui_image` set to that pushed UI image, the
-   API URL, and a verified Cloud Run domain.
-4. Set `IMAGE_TAG` and optionally `API_DOMAIN_NAME`, then run the component
-   deployments in order:
+GitHub Actions deploys the component states in this order:
 
-   ```bash
-   infra/helm/deploy.sh bootstrap
-   infra/helm/deploy.sh nats
-   infra/helm/deploy.sh observability
-   make grafana-dashboards
-   infra/helm/deploy.sh grafana
-   infra/helm/deploy.sh kestra
-   infra/helm/deploy.sh api
-   infra/helm/deploy.sh worker
-   ```
+1. `bootstrap` (namespace, runtime Secret, service account, migrations)
+2. `nats`, `observability`, `grafana`, `kestra`, `api`, and `worker`
 
-Each command owns a dedicated release (`foodmind-bootstrap`, `foodmind-nats`,
-and so on). During the first run it uses Helm's `--take-ownership` option to
-adopt the resources from the legacy `foodmind` release without changing their
-selectors. Do not subsequently upgrade or uninstall that legacy release: it
-retains historical release metadata and an uninstall would delete the resources
-listed in that old manifest. Keep it dormant (or remove only its Helm release
-secrets after a separately reviewed cleanup procedure).
+Each state owns a dedicated release (`foodmind-bootstrap`, `foodmind-nats`, and
+so on). The first apply uses Helm upgrade mode and ownership adoption for the
+existing releases. Terraform import blocks adopt the namespace, runtime Secret,
+and Kestra flow ConfigMap previously created by the legacy script. For a new,
+empty cluster set `adopt_existing_resources=false`.
 
-The component releases deploy API, chat worker, migrations, NATS with NUI,
-Kestra, Prometheus, Tempo and Grafana. They use Workload Identity for Vertex AI,
-Cloud SQL Auth Proxy for PostgreSQL, and a Kubernetes runtime secret populated at
-deploy time. Kestra Basic Auth credentials are application configuration: Terraform
-generates or accepts the password, stores it in Secret Manager, Helm injects it
-into Kestra, and the flow-sync Job receives the same credential.
-Grafana, Kestra and NUI are cluster services; expose them through an authenticated
-gateway or `kubectl port-forward` rather than making operational UIs public by default.
+The releases deploy API, chat worker, migrations, NATS with NUI, Kestra,
+Prometheus, Tempo, and Grafana. They use Workload Identity for Vertex AI, Cloud
+SQL Auth Proxy for PostgreSQL, and a Kubernetes runtime Secret populated during
+the bootstrap apply. Secret Manager values enter Terraform as ephemeral
+variables and the Kubernetes provider writes them through a write-only field,
+so they are not retained in the deployment plan or state.
+
+Grafana, Kestra, and NUI are publicly reachable operational services in the
+current review environment. Production deployments should place them behind an
+authenticated gateway.

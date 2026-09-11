@@ -21,6 +21,13 @@ variable "evaluation_bucket_name" {
   nullable    = true
 }
 
+variable "terraform_state_bucket_name" {
+  description = "Optional globally unique GCS bucket name for component deployment state. Defaults to <project-id>-foodmind-terraform-state."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
 variable "service_account_id" {
   description = "Account ID for the Kestra ingestion service account."
   type        = string

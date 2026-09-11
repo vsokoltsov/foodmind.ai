@@ -13,6 +13,11 @@ output "evaluation_artifact_bucket_name" {
   value       = try(module.evaluation_artifacts[0].bucket_name, null)
 }
 
+output "terraform_state_bucket_name" {
+  description = "Versioned GCS bucket containing isolated component deployment states."
+  value       = google_storage_bucket.deployment_state.name
+}
+
 output "ingestion_service_account_email" {
   description = "Service account email to use for Kestra workload identity or a local key."
   value       = google_service_account.ingestion.email

@@ -89,3 +89,21 @@ resource "github_actions_variable" "kestra_basic_auth_username" {
   variable_name = "KESTRA_BASIC_AUTH_USERNAME"
   value         = var.kestra_basic_auth_username
 }
+
+resource "github_actions_variable" "kestra_public_ip" {
+  repository    = var.repository
+  variable_name = "KESTRA_PUBLIC_IP"
+  value         = var.kestra_public_ip
+}
+
+resource "github_actions_variable" "nats_ui_public_ip" {
+  repository    = var.repository
+  variable_name = "NATS_UI_PUBLIC_IP"
+  value         = var.nats_ui_public_ip
+}
+
+resource "github_actions_variable" "terraform_state_bucket" {
+  repository    = var.repository
+  variable_name = "TERRAFORM_STATE_BUCKET"
+  value         = var.terraform_state_bucket
+}

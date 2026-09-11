@@ -79,3 +79,18 @@ variable "kestra_basic_auth_username" {
   description = "Non-secret Kestra Basic Auth username used by deployment jobs."
   type        = string
 }
+
+variable "kestra_public_ip" {
+  description = "Static regional IP assigned to the Kestra LoadBalancer."
+  type        = string
+}
+
+variable "nats_ui_public_ip" {
+  description = "Static regional IP assigned to the NATS NUI LoadBalancer."
+  type        = string
+}
+
+variable "terraform_state_bucket" {
+  description = "GCS bucket containing component deployment state."
+  type        = string
+}

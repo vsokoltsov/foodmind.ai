@@ -1,6 +1,7 @@
 # FoodMind infrastructure
 
-This configuration provisions the GCS ingestion bucket, Vertex AI access, Google
+This configuration provisions the GCS ingestion and Terraform-state buckets,
+Vertex AI access, Google
 Secret Manager secrets for the OpenAI and Gemini API keys, and GitHub Actions
 Workload Identity Federation. GitHub Actions receives only non-sensitive
 connection identifiers as repository variables and reads `OPENAI_API_KEY` from
@@ -24,3 +25,7 @@ The keys are sensitive, and Terraform state contains the secret version values;
 use encrypted remote state and restrict access to it. GitHub Actions exchanges
 its OIDC token for short-lived Google credentials, so no service-account JSON
 key is stored in GitHub.
+
+Apply this root before using `infra/deployment`. It publishes the state-bucket
+and static-IP repository variables consumed by the declarative component
+deployment workflow.

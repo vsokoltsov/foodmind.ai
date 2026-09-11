@@ -25,6 +25,7 @@ gcp.json
 *.tfstate.*
 *.tfplan
 .terraform.lock.hcl
+!infra/deployment/.terraform.lock.hcl
 terraform.tfvars
 
 # Alembic migration bookkeeping for local Elasticsearch migrations

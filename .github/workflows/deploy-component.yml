@@ -1,4 +1,4 @@
-name: Deploy Helm component
+name: Deploy Terraform component
 
 on:
   workflow_call:
@@ -32,32 +32,51 @@ jobs:
       image_tag: ${{ inputs.image_tag }}
       kestra_image_tag: ${{ inputs.kestra_image_tag != '' && inputs.kestra_image_tag || inputs.image_tag }}
     env:
-      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      GCP_REGION: ${{ vars.GCP_REGION }}
-      GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME }}
-      GKE_NAMESPACE: ${{ vars.GKE_NAMESPACE }}
-      ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
-      CLOUD_SQL_CONNECTION_NAME: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
-      GCP_WORKLOAD_SERVICE_ACCOUNT: ${{ vars.GCP_WORKLOAD_SERVICE_ACCOUNT }}
-      GCS_BUCKET: ${{ vars.GCS_BUCKET }}
-      EVALUATION_ARTIFACT_BUCKET: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
-      ELASTICSEARCH_ENDPOINT: ${{ vars.ELASTICSEARCH_ENDPOINT }}
-      ELASTICSEARCH_USERNAME: ${{ vars.ELASTICSEARCH_USERNAME }}
-      API_DOMAIN_NAME: ${{ vars.API_DOMAIN_NAME }}
-      KESTRA_BASIC_AUTH_USERNAME: ${{ vars.KESTRA_BASIC_AUTH_USERNAME }}
-      KESTRA_PUBLIC_IP: ${{ vars.KESTRA_PUBLIC_IP }}
-      NATS_UI_PUBLIC_IP: ${{ vars.NATS_UI_PUBLIC_IP }}
-      IMAGE_TAG: ${{ inputs.image_tag }}
-      KESTRA_IMAGE_TAG: ${{ inputs.kestra_image_tag != '' && inputs.kestra_image_tag || inputs.image_tag }}
-      INGESTION_IMAGE_TAG: ${{ inputs.image_tag }}
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ vars.GCP_REGION }}
+      TF_VAR_cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+      TF_VAR_namespace: ${{ vars.GKE_NAMESPACE }}
+      TF_VAR_component: ${{ inputs.component }}
+      TF_VAR_image_tag: ${{ inputs.image_tag }}
+      TF_VAR_kestra_image_tag: ${{ inputs.kestra_image_tag != '' && inputs.kestra_image_tag || inputs.image_tag }}
+      TF_VAR_artifact_registry_repository: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      TF_VAR_cloud_sql_connection_name: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
+      TF_VAR_gcp_workload_service_account: ${{ vars.GCP_WORKLOAD_SERVICE_ACCOUNT }}
+      TF_VAR_gcs_bucket: ${{ vars.GCS_BUCKET }}
+      TF_VAR_evaluation_artifact_bucket: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
+      TF_VAR_elasticsearch_endpoint: ${{ vars.ELASTICSEARCH_ENDPOINT }}
+      TF_VAR_elasticsearch_username: ${{ vars.ELASTICSEARCH_USERNAME }}
+      TF_VAR_api_domain_name: ${{ vars.API_DOMAIN_NAME }}
+      TF_VAR_kestra_basic_auth_username: ${{ vars.KESTRA_BASIC_AUTH_USERNAME }}
+      TF_VAR_kestra_public_ip: ${{ vars.KESTRA_PUBLIC_IP }}
+      TF_VAR_nats_ui_public_ip: ${{ vars.NATS_UI_PUBLIC_IP }}
+      TF_VAR_runtime_secret_revision: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up deployment access
-        uses: ./.github/actions/setup-deployment
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Read bootstrap runtime secrets
+        id: runtime-secrets
+        if: ${{ inputs.component == 'bootstrap' || inputs.component == 'all' }}
+        uses: google-github-actions/get-secretmanager-secrets@v3
+        with:
+          secrets: |-
+            openai_api_key:${{ vars.GCP_PROJECT_ID }}/OPENAI_API_KEY
+            foodmind_database_password:${{ vars.GCP_PROJECT_ID }}/FOODMIND_DATABASE_PASSWORD
+            kestra_database_password:${{ vars.GCP_PROJECT_ID }}/KESTRA_DATABASE_PASSWORD
+            kestra_basic_auth_password:${{ vars.GCP_PROJECT_ID }}/KESTRA_BASIC_AUTH_PASSWORD
+            elasticsearch_password:${{ vars.GCP_PROJECT_ID }}/ELASTICSEARCH_PASSWORD
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.2"
 
       # This job compiles the dashboard itself so Grafana can deploy in
       # parallel with the dashboard-validation job in the caller workflow.
@@ -69,5 +88,28 @@ jobs:
         if: ${{ inputs.component == 'grafana' }}
         run: make grafana-dashboards
 
-      - name: Deploy ${{ inputs.component }}
-        run: infra/helm/deploy.sh ${{ inputs.component }}
+      - name: Initialize component state
+        working-directory: infra/deployment
+        run: >-
+          terraform init
+          -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}"
+          -backend-config="prefix=deploy/${{ inputs.component }}"
+
+      - name: Validate deployment configuration
+        working-directory: infra/deployment
+        run: terraform validate
+
+      - name: Plan ${{ inputs.component }}
+        working-directory: infra/deployment
+        env: &runtime-secrets
+          TF_VAR_openai_api_key: ${{ steps.runtime-secrets.outputs.openai_api_key }}
+          TF_VAR_foodmind_database_password: ${{ steps.runtime-secrets.outputs.foodmind_database_password }}
+          TF_VAR_kestra_database_password: ${{ steps.runtime-secrets.outputs.kestra_database_password }}
+          TF_VAR_kestra_basic_auth_password: ${{ steps.runtime-secrets.outputs.kestra_basic_auth_password }}
+          TF_VAR_elasticsearch_password: ${{ steps.runtime-secrets.outputs.elasticsearch_password }}
+        run: terraform plan -out=deployment.tfplan
+
+      - name: Apply ${{ inputs.component }}
+        working-directory: infra/deployment
+        env: *runtime-secrets
+        run: terraform apply -auto-approve deployment.tfplan

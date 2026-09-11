@@ -19,6 +19,26 @@ module "evaluation_artifacts" {
   force_destroy         = var.force_destroy
 }
 
+# Application releases keep independent state prefixes in this versioned
+# bucket. Separating deployment state from the infrastructure root allows the
+# component jobs to run concurrently without sharing a state lock.
+resource "google_storage_bucket" "deployment_state" {
+  project                     = var.project_id
+  name                        = coalesce(var.terraform_state_bucket_name, "${var.project_id}-foodmind-terraform-state")
+  location                    = var.region
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 resource "google_storage_bucket_iam_member" "github_evaluation_writer" {
   count  = var.evaluation_bucket_name == null ? 0 : 1
   bucket = module.evaluation_artifacts[0].bucket_name
@@ -134,6 +154,9 @@ module "github_actions_config" {
   elasticsearch_username       = module.elastic_cloud.elasticsearch_username
   api_domain_name              = var.api_domain_name
   kestra_basic_auth_username   = local.kestra_basic_auth_username
+  kestra_public_ip             = module.gke.kestra_public_ip
+  nats_ui_public_ip            = module.gke.nats_ui_public_ip
+  terraform_state_bucket       = google_storage_bucket.deployment_state.name
 }
 
 resource "google_service_account" "ingestion" {
@@ -228,6 +251,12 @@ resource "google_project_iam_member" "github_actions_artifact_registry" {
   project = var.project_id
   role    = "roles/artifactregistry.writer"
   member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+resource "google_storage_bucket_iam_member" "github_actions_deployment_state" {
+  bucket = google_storage_bucket.deployment_state.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_actions.email}"
 }
 
 resource "google_project_iam_member" "github_actions_gke" {

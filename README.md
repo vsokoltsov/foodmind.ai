@@ -267,6 +267,7 @@ Local observability URLs:
 ├── cmd/                   # API, worker, ingestion, and dashboard utility entry points
 ├── elasticsearch/         # Versioned Jsonnet index and alias definitions
 ├── infra/
+│   ├── deployment/        # Terraform-managed Kubernetes and Helm releases
 │   ├── grafana/           # Dashboard Jsonnet and Grafana provisioning
 │   ├── helm/foodmind/     # Helm chart for GKE deployment
 │   ├── kestra/            # Kestra application configuration and source flows
