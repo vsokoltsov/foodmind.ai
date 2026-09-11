@@ -64,6 +64,10 @@ The source data is intentionally heterogeneous. Missing fields and inconsistent 
 
 ## 🎨 UI
 
+* [Cloud Run App](https://foodmind-ui-4qpn67rywa-ey.a.run.app/)
+
+> ⚠️ This active URL, and the URLs below, may be temporarily unavailable at the time of review.
+
 ![](./docs/ui_1.gif)
 
 ![](./docs/ui_2.gif)
@@ -199,6 +203,10 @@ sequenceDiagram
 `ConversationContextBuilder` supplies the optional stored summary, the latest eight user/assistant messages (each truncated to 1,500 characters), and the current message. This gives the model conversational continuity without allowing the prompt to grow without bound. Database commits happen before and after long-running agent work, so PostgreSQL does not hold an idle transaction while models or retrieval are running.
 
 ## 📊 Dashboards
+
+* [Dashboards UI](http://34.185.159.99:3000/d/foodmind-overview/foodmind-operations)
+
+> ⚠️ The dashboard URL is a live deployment endpoint and may be temporarily unavailable at the time of review.
 
 Grafana is provisioned with a FoodMind operations dashboard generated from Jsonnet at `infra/grafana/dashboards/foodmind-overview.jsonnet`. It groups panels by purpose, including:
 
@@ -344,6 +352,18 @@ The stream emits lifecycle events such as `started`, `chat_created`, `query_rewr
    - Prometheus: <http://localhost:9090>
 
 ### 📥 Ingest data
+
+* [Kestra UI](http://35.242.218.76:8080/ui/main/flows)
+
+> ⚠️ The ingestion UI is a live deployment endpoint and may be temporarily unavailable at the time of review.
+
+![](./docs/ingestion_openfoodfacts.png)
+
+![](./docs/ingestion_usda_branded_foods.png)
+
+![](./docs/ingestion_usda_foundation_foods.png)
+
+![](./docs/ingestion_wikidata.png)
 
 The Kestra parent flow `foodmind.foodmind_ingestion` starts the Wikidata, USDA Foundation, USDA Branded, and Open Food Facts source flows in parallel. Each flow exposes discrete download, transformation, dlt normalization/staging, Elasticsearch publishing, and validation tasks.
 
