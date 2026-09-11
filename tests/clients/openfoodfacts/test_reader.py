@@ -1,4 +1,5 @@
 import gzip
+import io
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -88,6 +89,26 @@ def test_reader_is_lazy_and_does_not_parse_the_whole_export_at_once(
     assert next(products).code == "0000101209159"
     with pytest.raises(ValueError, match="at line 2"):
         next(products)
+
+
+def test_streams_products_from_an_open_compressed_object(
+    reader: OpenFoodFactsReader,
+    product_record: dict[str, object],
+) -> None:
+    """GCS-backed ingestion must not require a local archive path."""
+    compressed_export = io.BytesIO()
+    with gzip.GzipFile(fileobj=compressed_export, mode="wb") as export:
+        export.write(json.dumps(product_record).encode() + b"\n")
+
+    compressed_export.seek(0)
+    products = list(
+        reader.iter_products_stream(
+            compressed_export,
+            source_name="gs://bucket/openfoodfacts.jsonl.gz",
+        )
+    )
+
+    assert [product.code for product in products] == ["0000101209159"]
 
 
 def test_propagates_product_validation_errors(

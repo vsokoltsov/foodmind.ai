@@ -4,6 +4,7 @@ import gzip
 import json
 from collections.abc import Iterator
 from pathlib import Path
+from typing import BinaryIO
 
 from app.clients.openfoodfacts.models import OpenFoodFactsProduct
 
@@ -28,7 +29,20 @@ class OpenFoodFactsReader:
             pydantic.ValidationError: If a record does not match the product
                 model.
         """
-        with gzip.open(archive_path, "rb") as export:
+        with archive_path.open("rb") as compressed_export:
+            yield from self.iter_products_stream(
+                compressed_export,
+                source_name=str(archive_path),
+            )
+
+    def iter_products_stream(
+        self,
+        compressed_export: BinaryIO,
+        *,
+        source_name: str,
+    ) -> Iterator[OpenFoodFactsProduct]:
+        """Yield products directly from a compressed binary object stream."""
+        with gzip.GzipFile(fileobj=compressed_export, mode="rb") as export:
             for line_number, line in enumerate(export, start=1):
                 if not line.strip():
                     continue
@@ -36,8 +50,6 @@ class OpenFoodFactsReader:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError as error:
-                    raise ValueError(
-                        f"Invalid JSON in {archive_path} at line {line_number}"
-                    ) from error
+                    raise ValueError(f"Invalid JSON in {source_name} at line {line_number}") from error
 
                 yield OpenFoodFactsProduct.model_validate(record)

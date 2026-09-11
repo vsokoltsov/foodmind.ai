@@ -213,6 +213,31 @@ def openfoodfacts_documents_resource(path: Path) -> Iterator[dict[str, Any]]:
         yield product.to_domain().model_dump(mode="json")
 
 
+def _openfoodfacts_gcs_object(config: StagedIngestionConfig) -> str:
+    """Return the GCS object path for the Open Food Facts source archive."""
+    if not config.gcs_bucket:
+        raise ValueError("GCS_BUCKET is required for streamed Open Food Facts ingestion")
+    key = artifact_key("openfoodfacts", config.openfoodfacts_archive)
+    prefix = "/".join(
+        part for part in (config.gcs_prefix.strip("/"), key) if part
+    )
+    return f"{config.gcs_bucket}/{prefix}"
+
+
+def openfoodfacts_gcs_documents_resource(
+    config: StagedIngestionConfig,
+) -> Iterator[dict[str, Any]]:
+    """Stream a compressed Open Food Facts archive directly from GCS."""
+    object_path = _openfoodfacts_gcs_object(config)
+    filesystem = gcsfs.GCSFileSystem(project=config.gcp_project_id)
+    with filesystem.open(object_path, "rb") as compressed_export:
+        for product in OpenFoodFactsReader().iter_products_stream(
+            compressed_export,
+            source_name=f"gs://{object_path}",
+        ):
+            yield product.to_domain().model_dump(mode="json")
+
+
 ARCHIVE_MODELS: dict[SourceName, type[BaseModel]] = {
     "usda-foundation": FoundationFoodAggregate,
     "usda-branded": BrandedFoodAggregate,
@@ -228,7 +253,10 @@ def _archive_documents(source: SourceName, config: StagedIngestionConfig) -> Ite
         case "usda-branded":
             yield from usda_branded_documents_resource(config.branded_archive)
         case "openfoodfacts":
-            yield from openfoodfacts_documents_resource(config.openfoodfacts_archive)
+            if config.artifact_storage == "gcs":
+                yield from openfoodfacts_gcs_documents_resource(config)
+            else:
+                yield from openfoodfacts_documents_resource(config.openfoodfacts_archive)
         case _:
             raise ValueError("Wikidata uses its dedicated extraction stages")
 
@@ -550,6 +578,18 @@ async def download_source(source: SourceName, config: StagedIngestionConfig) -> 
             remote_exists=remote_exists,
             artifact_key=key,
         )
+        if (
+            source == "openfoodfacts"
+            and config.artifact_storage == "gcs"
+            and remote_exists
+            and not config.force_download
+        ):
+            logger.info(
+                "source_archive_available_for_streaming",
+                source=source,
+                artifact_key=key,
+            )
+            return path
         if config.force_download:
             path.parent.mkdir(parents=True, exist_ok=True)
             await download()
@@ -586,6 +626,16 @@ async def materialize_source(source: SourceName, config: StagedIngestionConfig) 
     }[source]
     store = create_artifact_store(config)
     logger = structlog.get_logger(__name__)
+    if source == "openfoodfacts" and config.artifact_storage == "gcs":
+        key = artifact_key(source, path)
+        if not await store.exists(key):
+            raise FileNotFoundError(f"GCS artifact {key!r} is not available")
+        logger.info(
+            "source_archive_streamed_from_gcs",
+            source=source,
+            artifact_key=key,
+        )
+        return path
     if not path.exists():
         logger.info(
             "source_archive_restore_started",
