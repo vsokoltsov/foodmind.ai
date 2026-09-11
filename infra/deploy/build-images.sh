@@ -16,7 +16,7 @@ target_platform="${CONTAINER_PLATFORM:-linux/amd64}"
 dependency_image="${PYTHON_BASE_IMAGE:-${repository}/python-dependencies:local}"
 
 authenticate_artifact_registry() {
-  """Log Docker into Artifact Registry with a retried short-lived access token."""
+  # Log Docker into Artifact Registry with a retried short-lived access token.
   local registry="${region}-docker.pkg.dev"
   local attempt
   local access_token
