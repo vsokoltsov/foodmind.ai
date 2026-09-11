@@ -78,7 +78,12 @@ spec:
             - {name: dashboard, mountPath: /var/lib/grafana/dashboards}
             - {name: data, mountPath: /var/lib/grafana}
       volumes:
-        - {name: provisioning, configMap: {name: grafana-provisioning}}
+        - name: provisioning
+          configMap:
+            name: grafana-provisioning
+            items:
+              - {key: datasources.yml, path: datasources/datasources.yml}
+              - {key: dashboards.yml, path: dashboards/dashboards.yml}
         - {name: dashboard, configMap: {name: grafana-dashboard-foodmind-overview}}
         - {name: data, persistentVolumeClaim: {claimName: grafana-data}}
 {{- end }}
