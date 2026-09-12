@@ -139,8 +139,8 @@ jobs:
       contents: read
       id-token: write
     outputs:
-      python_base_image: ${{ steps.image-metadata.outputs.python_base_image }}
-      kestra_image_tag: ${{ steps.image-metadata.outputs.kestra_image_tag }}
+      python_base_image: ${{ steps.dependency-metadata.outputs.tags }}
+      kestra_image_tag: ${{ steps.kestra-metadata.outputs.version }}
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
@@ -148,33 +148,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - id: image-metadata
-        name: Define content-addressed image tags
-        run: |
-          dependency_hash="$(sha256sum uv.lock | cut -c1-16)"
-          kestra_hash="$(sha256sum Dockerfile.kestra | cut -c1-16)"
-          echo "python_base_image=${ARTIFACT_REGISTRY_REPOSITORY}/python-dependencies:${dependency_hash}" >> "$GITHUB_OUTPUT"
-          echo "kestra_image_tag=runtime-${kestra_hash}" >> "$GITHUB_OUTPUT"
+      - id: dependency-metadata
+        name: Define dependency image metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/python-dependencies
+          tags: type=raw,value=${{ hashFiles('uv.lock') }}
+
+      - id: kestra-metadata
+        name: Define Kestra image metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/kestra
+          tags: type=raw,value=runtime-${{ hashFiles('Dockerfile.kestra') }}
 
       - name: Authenticate to Google Cloud
+        id: google-auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - name: Authenticate Docker to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.google-auth.outputs.access_token }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Expose GitHub Actions cache service
-        uses: crazy-max/ghaction-github-runtime@v4
-
       - name: Build and publish dependency image
         env:
-          PYTHON_BASE_IMAGE: ${{ steps.image-metadata.outputs.python_base_image }}
-          PUSH_DEPENDENCY_IMAGE: "true"
-        run: infra/deploy/build-images.sh dependencies
+          IMAGE_PREFIX: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/
+          DEPENDENCY_TAG: ${{ steps.dependency-metadata.outputs.version }}
+        uses: docker/bake-action@v6
+        with:
+          files: ./docker-bake.hcl
+          targets: python-dependencies
+          push: true
+          set: |-
+            python-dependencies.cache-from=type=gha,scope=foodmind-python-dependencies
+            python-dependencies.cache-to=type=gha,mode=max,scope=foodmind-python-dependencies
 
   build-images:
     name: Build and publish ${{ matrix.component }} image
@@ -196,45 +213,39 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_REGION: ${{ vars.GCP_REGION }}
       ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      IMAGE_PREFIX: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/
       IMAGE_TAG: ${{ matrix.component == 'kestra' && needs.build-dependencies.outputs.kestra_image_tag || github.sha }}
       PYTHON_BASE_IMAGE: ${{ needs.build-dependencies.outputs.python_base_image }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud
+        id: google-auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - name: Authenticate Docker to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.GCP_REGION }}-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.google-auth.outputs.access_token }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Exposes the GitHub cache service credentials needed by direct
-      # `docker buildx build --cache-to/from type=gha` invocations.
-      - name: Expose GitHub Actions cache service
-        uses: crazy-max/ghaction-github-runtime@v4
-
-      - id: kestra-image-check
-        name: Check whether the Kestra runtime image needs rebuilding
-        if: ${{ matrix.component == 'kestra' }}
-        shell: bash
-        run: |
-          if gcloud artifacts docker images describe \
-            "${ARTIFACT_REGISTRY_REPOSITORY}/kestra:${IMAGE_TAG}" \
-            --project="${GCP_PROJECT_ID}" >/dev/null 2>&1; then
-            echo "rebuild=false" >> "$GITHUB_OUTPUT"
-            echo "Kestra runtime inputs are unchanged; reusing ${IMAGE_TAG}."
-          else
-            echo "rebuild=true" >> "$GITHUB_OUTPUT"
-            echo "Kestra runtime image ${IMAGE_TAG} is absent and will be built."
-          fi
-
       - name: Build and publish ${{ matrix.component }} image
-        if: ${{ matrix.component != 'kestra' || steps.kestra-image-check.outputs.rebuild == 'true' }}
-        run: infra/deploy/build-images.sh publish-${{ matrix.component }}
+        uses: docker/bake-action@v6
+        with:
+          files: ./docker-bake.hcl
+          targets: ${{ matrix.component }}
+          push: true
+          set: |-
+            ${{ matrix.component }}.cache-from=type=gha,scope=foodmind-${{ matrix.component }}
+            ${{ matrix.component }}.cache-to=type=gha,mode=max,scope=foodmind-${{ matrix.component }}
 
   deploy-bootstrap:
     name: Deploy bootstrap and database migrations

@@ -17,7 +17,8 @@ gke_node_zones        = ["europe-west3-a"]
 
 # Elastic Cloud control-plane key used to provision the managed Elasticsearch cluster.
 elastic_cloud_api_key = "replace-me"
-# Use a non-deprecated ID returned for your region by list-elastic-templates.sh.
+# Terraform validates this ID against non-deprecated templates compatible with
+# the selected region and Elastic Stack version.
 elastic_cloud_deployment_template_id = "replace-with-current-template-id"
 
 # A custom domain is optional. Without one, the API uses its public static IP

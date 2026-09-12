@@ -20,6 +20,11 @@ output "elasticsearch_password" {
   sensitive = true
 }
 
+output "available_deployment_templates" {
+  description = "Non-deprecated deployment templates compatible with the configured region and stack version."
+  value       = local.available_deployment_templates
+}
+
 output "kibana_endpoint" {
   value = ec_deployment.foodmind.kibana.https_endpoint
 }

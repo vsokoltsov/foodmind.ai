@@ -276,6 +276,7 @@ Local observability URLs:
 │   └── terraform/         # Modular GCP and Elastic Cloud infrastructure
 ├── tests/                 # Unit, integration, agent, API, and evaluation tests
 ├── docker-compose.yml     # Complete local development stack
+├── docker-bake.hcl        # Declarative production container build graph
 └── app/models.yaml        # Version-controlled model-role configuration
 ```
 
@@ -351,6 +352,23 @@ The stream emits lifecycle events such as `started`, `chat_created`, `query_rewr
    - NATS UI: <http://localhost:31311>
    - Grafana: <http://localhost:3000>
    - Prometheus: <http://localhost:9090>
+
+   Kestra now uses its native login directly. The default local credentials are
+   `admin@foodmind.local` / `Foodmind123`; override both `KESTRA_BASIC_AUTH_*`
+   variables in `.env` outside local development.
+
+### 🐳 Build production images locally
+
+The image build graph is declared in `docker-bake.hcl`. Build the shared Python
+base first, then the application images:
+
+```bash
+docker buildx bake -f docker-bake.hcl --load python-dependencies
+docker buildx bake -f docker-bake.hcl --load images
+```
+
+CI supplies the Artifact Registry prefix, immutable tags, remote Python base,
+GitHub Actions caches, and `--push` behavior through `docker/bake-action`.
 
 ### 📥 Ingest data
 

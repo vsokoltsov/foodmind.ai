@@ -1,8 +1,8 @@
 # FoodMind infrastructure
 
 This configuration provisions the GCS ingestion and Terraform-state buckets,
-Vertex AI access, Google
-Secret Manager secrets for the OpenAI and Gemini API keys, and GitHub Actions
+Vertex AI access, Google Secret Manager secrets for the OpenAI and Gemini API
+keys, and GitHub Actions
 Workload Identity Federation. GitHub Actions receives only non-sensitive
 connection identifiers as repository variables and reads `OPENAI_API_KEY` from
 Secret Manager at runtime. Vertex AI is accessed with service-account
@@ -29,3 +29,13 @@ key is stored in GitHub.
 Apply this root before using `infra/deployment`. It publishes the state-bucket
 and static-IP repository variables consumed by the declarative component
 deployment workflow.
+
+The Elastic provider queries deployment templates for the configured region and
+stack version during planning. Deprecated templates are excluded, and the plan
+fails with the compatible ID/name map when
+`elastic_cloud_deployment_template_id` is invalid. After a successful refresh
+or apply, the same map is available as:
+
+```shell
+terraform output elastic_cloud_available_deployment_templates
+```

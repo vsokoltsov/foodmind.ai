@@ -221,7 +221,7 @@ variable "elastic_cloud_version" {
 }
 
 variable "elastic_cloud_deployment_template_id" {
-  description = "Non-deprecated Elastic Cloud deployment template ID for the selected region. Obtain it with infra/terraform/list-elastic-templates.sh."
+  description = "Elastic Cloud deployment template ID. Terraform validates it against compatible, non-deprecated templates returned by the provider."
   type        = string
 }
 

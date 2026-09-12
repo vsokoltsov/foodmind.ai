@@ -121,6 +121,11 @@ output "elasticsearch_password" {
   sensitive   = true
 }
 
+output "elastic_cloud_available_deployment_templates" {
+  description = "Non-deprecated Elastic deployment templates compatible with the configured region and stack version."
+  value       = module.elastic_cloud.available_deployment_templates
+}
+
 output "cloud_run_ui_url" {
   description = "Cloud Run UI service URL."
   value       = module.cloud_run_ui.url
