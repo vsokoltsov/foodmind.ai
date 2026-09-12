@@ -35,7 +35,7 @@ variable "service_account_id" {
 }
 
 variable "force_destroy" {
-  description = "Allow Terraform to delete non-empty buckets. Keep false outside local development."
+  description = "Allow Terraform to delete all objects and versions from artifact and component-state buckets. Enable only for intentional teardown."
   type        = bool
   default     = false
 }
@@ -197,7 +197,7 @@ variable "cloud_sql_availability_type" {
 }
 
 variable "cloud_sql_deletion_protection" {
-  description = "Prevent accidental deletion of Cloud SQL."
+  description = "Enable both Terraform-level and Cloud SQL API-level deletion protection."
   type        = bool
   default     = false
 }

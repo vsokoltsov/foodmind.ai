@@ -3,6 +3,9 @@ project_id             = "your-gcp-project"
 bucket_name            = "your-gcp-project-foodmind-ingestion"
 evaluation_bucket_name = "your-gcp-project-foodmind-evaluation"
 
+# Keep false for normal applies. Use destroy.tfvars for an intentional teardown.
+force_destroy = false
+
 # Lowest-cost Cloud SQL configuration, intended for development only.
 cloud_sql_edition = "ENTERPRISE"
 cloud_sql_tier    = "db-f1-micro"

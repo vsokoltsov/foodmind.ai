@@ -45,11 +45,18 @@ resource "google_sql_database_instance" "foodmind" {
   deletion_protection = var.deletion_protection
 
   settings {
-    edition           = var.edition
-    tier              = var.tier
-    availability_type = var.availability_type
-    disk_type         = "PD_SSD"
-    disk_size         = 20
+    edition                  = var.edition
+    tier                     = var.tier
+    availability_type        = var.availability_type
+    disk_type                = "PD_SSD"
+    disk_size                = 20
+    retain_backups_on_delete = false
+
+    # Cloud SQL has two independent safeguards. The resource-level setting
+    # protects Terraform deletes; this API-level setting also blocks deletes
+    # made through Terraform when enabled. Keep both controlled by the same
+    # input so the destroy profile can disable them together.
+    deletion_protection_enabled = var.deletion_protection
 
     backup_configuration {
       enabled = true

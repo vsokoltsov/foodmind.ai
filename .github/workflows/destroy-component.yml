@@ -1,0 +1,67 @@
+name: Destroy Terraform component
+
+on:
+  workflow_call:
+    inputs:
+      component:
+        required: true
+        type: string
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ vars.GCP_REGION }}
+      TF_VAR_cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+      TF_VAR_namespace: ${{ vars.GKE_NAMESPACE }}
+      TF_VAR_component: ${{ inputs.component }}
+      TF_VAR_image_tag: destroy
+      TF_VAR_kestra_image_tag: destroy
+      TF_VAR_artifact_registry_repository: ${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}
+      TF_VAR_cloud_sql_connection_name: ${{ vars.CLOUD_SQL_CONNECTION_NAME }}
+      TF_VAR_gcp_workload_service_account: ${{ vars.GCP_WORKLOAD_SERVICE_ACCOUNT }}
+      TF_VAR_gcs_bucket: ${{ vars.GCS_BUCKET }}
+      TF_VAR_evaluation_artifact_bucket: ${{ vars.EVALUATION_ARTIFACT_BUCKET }}
+      TF_VAR_elasticsearch_endpoint: ${{ vars.ELASTICSEARCH_ENDPOINT }}
+      TF_VAR_elasticsearch_username: ${{ vars.ELASTICSEARCH_USERNAME }}
+      TF_VAR_api_domain_name: ${{ vars.API_DOMAIN_NAME }}
+      TF_VAR_kestra_basic_auth_username: ${{ vars.KESTRA_BASIC_AUTH_USERNAME }}
+      TF_VAR_kestra_public_ip: ${{ vars.KESTRA_PUBLIC_IP }}
+      TF_VAR_nats_ui_public_ip: ${{ vars.NATS_UI_PUBLIC_IP }}
+      # These values are required only to evaluate the bootstrap configuration.
+      # A destroy plan never writes them to Kubernetes or Terraform state.
+      TF_VAR_openai_api_key: destroy-only-placeholder
+      TF_VAR_foodmind_database_password: destroy-only-placeholder
+      TF_VAR_kestra_database_password: destroy-only-placeholder
+      TF_VAR_kestra_basic_auth_password: destroy-only-placeholder
+      TF_VAR_elasticsearch_password: destroy-only-placeholder
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.2"
+
+      - name: Initialize ${{ inputs.component }} state
+        working-directory: infra/deployment
+        run: >-
+          terraform init -reconfigure
+          -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}"
+          -backend-config="prefix=deploy/${{ inputs.component }}"
+
+      - name: Destroy ${{ inputs.component }}
+        working-directory: infra/deployment
+        run: terraform destroy -auto-approve

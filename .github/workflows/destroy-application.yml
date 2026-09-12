@@ -1,0 +1,80 @@
+name: Destroy application deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type DESTROY foodmind to remove every Kubernetes deployment.
+        required: true
+        type: string
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify destructive-action confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = "DESTROY foodmind"
+
+  worker:
+    needs: authorize
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: worker
+    secrets: inherit
+
+  api:
+    needs: worker
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: api
+    secrets: inherit
+
+  kestra:
+    needs: api
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: kestra
+    secrets: inherit
+
+  grafana:
+    needs: kestra
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: grafana
+    secrets: inherit
+
+  observability:
+    needs: grafana
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: observability
+    secrets: inherit
+
+  nats:
+    needs: observability
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: nats
+    secrets: inherit
+
+  # A historical all-in-one state may coexist with component states. Destroy it
+  # after the component releases; an empty state is a harmless no-op. It may
+  # own the namespace, so it must run only after all workload releases.
+  all:
+    needs: nats
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: all
+    secrets: inherit
+
+  # Bootstrap owns the namespace. Destroy it last so Kubernetes can delete any
+  # StatefulSet PVCs and wait for external load balancers to be released while
+  # the GKE control plane still exists.
+  bootstrap:
+    needs: all
+    uses: ./.github/workflows/destroy-component.yml
+    with:
+      component: bootstrap
+    secrets: inherit

@@ -28,14 +28,13 @@ resource "google_storage_bucket" "deployment_state" {
   location                    = var.region
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
-  force_destroy               = false
+  # Component states are destroyed before this root. During an intentional
+  # teardown, force_destroy removes their versioned state objects so the
+  # bucket can be deleted as the final infrastructure resource.
+  force_destroy = var.force_destroy
 
   versioning {
     enabled = true
-  }
-
-  lifecycle {
-    prevent_destroy = true
   }
 }
 

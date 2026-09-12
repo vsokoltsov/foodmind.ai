@@ -42,3 +42,9 @@ terraform -chdir=infra/deployment init \
 terraform -chdir=infra/deployment plan -out=deployment.tfplan
 terraform -chdir=infra/deployment apply deployment.tfplan
 ```
+
+Do not delete the GKE cluster while any of these component states still contain
+resources. For a complete teardown, use the manually confirmed **Destroy
+application deployment** workflow. It destroys workload releases first and the
+bootstrap namespace last, allowing Kubernetes to clean up load balancers and
+persistent volumes before the infrastructure root removes GKE and its network.
