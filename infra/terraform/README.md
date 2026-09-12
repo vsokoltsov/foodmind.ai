@@ -85,6 +85,12 @@ Disabling foundational APIs such as IAM during teardown can fail while GKE or
 Google-managed services still depend on them, and disabling APIs is not
 necessary to remove FoodMind resources.
 
+Cloud SQL can retain producer-side networking allocations for a while after an
+instance disappears. The private-service connection therefore uses
+`deletion_policy = "REMOVE_PEERING"`, available in Google provider 7.46 and
+later. Once the instance is gone, this removes a lingering consumer VPC peering
+instead of letting it block deletion of the FoodMind network.
+
 This process permanently deletes databases, Elasticsearch data, bucket objects
 and object versions, container images, persistent volumes, secrets, and
 component state. The infrastructure root intentionally uses local state because
@@ -94,23 +100,25 @@ has completed.
 
 ### Retrying a partially completed destroy
 
-If a destroy started with an older configuration and failed while disabling an
-API or deleting a PostgreSQL user, persist only the corrected lifecycle fields
-before making a new destroy plan. A full apply could recreate resources already
-removed by the partial destroy, so use these targets:
+If a destroy started with an older configuration, inspect what remains before
+applying any target. A full apply—or targeting an address already absent from
+state—could recreate resources removed by the partial destroy:
 
 ```shell
+terraform -chdir=infra/terraform state list
+```
+
+For the common final failure where only the Service Networking connection,
+allocated range, and VPC remain, persist the new removal policy on that
+connection only:
+
+```shell
+terraform -chdir=infra/terraform init -upgrade
 terraform -chdir=infra/terraform apply \
   -var-file=destroy.tfvars \
-  -target=google_project_service.secret_manager \
-  -target=google_project_service.iam \
-  -target=google_project_service.iam_credentials \
-  -target=google_project_service.sts \
-  -target=module.cloud_sql.google_sql_user.foodmind \
-  -target=module.cloud_sql.google_sql_user.kestra
+  -target=module.cloud_sql.google_service_networking_connection.private_services
 ```
 
 Discard the failed saved plan, create a new `plan -destroy` with
-`destroy.tfvars`, inspect it, and apply the new plan. Terraform will abandon the
-two SQL-user resources, leave the project APIs enabled, and continue deleting
-the Cloud SQL instance and remaining infrastructure.
+`destroy.tfvars`, inspect it, and apply the new plan. Never include an absent
+resource in the targeted apply.

@@ -24,6 +24,11 @@ resource "google_service_networking_connection" "private_services" {
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_services.name]
 
+  # Cloud SQL may retain producer-side allocations after its instance has been
+  # deleted. During teardown, remove the consumer VPC peering if deleteConnection
+  # is temporarily refused, otherwise that peering blocks deletion of the VPC.
+  deletion_policy = "REMOVE_PEERING"
+
   depends_on = [google_project_service.service_networking]
 }
 
