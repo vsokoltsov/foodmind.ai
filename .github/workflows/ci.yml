@@ -46,7 +46,7 @@ jobs:
     name: ${{ matrix.agent }} ${{ matrix.agent == 'retrieval' && 'retrieval' || 'LLM' }} evaluation
     needs: tests
     # Secret Manager access is intentionally unavailable to forked pull requests.
-    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
     # Model roles are configured through the typed nested settings fields. The
     # checked-in app/models.yaml contains the same defaults; these values make
@@ -133,7 +133,7 @@ jobs:
   build-dependencies:
     name: Build Python dependency image
     needs: [quality, tests, evaluation]
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -196,7 +196,7 @@ jobs:
   build-images:
     name: Build and publish ${{ matrix.component }} image
     needs: build-dependencies
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -250,6 +250,7 @@ jobs:
   deploy-bootstrap:
     name: Deploy bootstrap and database migrations
     needs: [build-dependencies, build-images]
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -263,6 +264,7 @@ jobs:
   deploy-nats:
     name: Deploy NATS
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -275,6 +277,7 @@ jobs:
   deploy-observability:
     name: Deploy Prometheus and Tempo
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -287,6 +290,7 @@ jobs:
   prepare-grafana-dashboards:
     name: Prepare Grafana dashboards
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -310,6 +314,7 @@ jobs:
   deploy-grafana:
     name: Deploy Grafana
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -322,6 +327,7 @@ jobs:
   deploy-kestra:
     name: Deploy Kestra and synchronize flows
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -335,6 +341,7 @@ jobs:
   deploy-api:
     name: Deploy API
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -347,6 +354,7 @@ jobs:
   deploy-worker:
     name: Deploy chat worker
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -359,6 +367,7 @@ jobs:
   deploy-ui:
     name: Deploy Cloud Run UI
     needs: deploy-bootstrap
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     permissions:
       contents: read
       id-token: write

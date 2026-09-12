@@ -10,6 +10,7 @@ on:
 
 jobs:
   authorize:
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Verify destructive-action confirmation

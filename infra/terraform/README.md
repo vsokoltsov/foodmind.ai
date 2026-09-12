@@ -72,10 +72,18 @@ terraform -chdir=infra/terraform plan -destroy \
 terraform -chdir=infra/terraform apply destroy.tfplan
 ```
 
-The Cloud SQL databases and users already reference their instance, so
-Terraform deletes them before the instance automatically. The Cloud SQL
-instance in turn depends on private service networking, which keeps the
-connection and VPC alive until the database is gone.
+The Cloud SQL databases are deleted before their instance. PostgreSQL refuses
+to drop application roles while those roles still own schema objects, so the
+two `google_sql_user` resources use `deletion_policy = "ABANDON"`. Terraform
+forgets the user resources without issuing `DROP ROLE`; deleting the Cloud SQL
+instance then removes the users and their objects together. The instance in
+turn depends on private service networking, which keeps the connection and VPC
+alive until the database is gone.
+
+Terraform also leaves project APIs enabled when their resources leave state.
+Disabling foundational APIs such as IAM during teardown can fail while GKE or
+Google-managed services still depend on them, and disabling APIs is not
+necessary to remove FoodMind resources.
 
 This process permanently deletes databases, Elasticsearch data, bucket objects
 and object versions, container images, persistent volumes, secrets, and
@@ -83,3 +91,26 @@ component state. The infrastructure root intentionally uses local state because
 its managed GCS bucket contains the component states and must itself be deleted
 at the end. Preserve `infra/terraform/terraform.tfstate` until the final apply
 has completed.
+
+### Retrying a partially completed destroy
+
+If a destroy started with an older configuration and failed while disabling an
+API or deleting a PostgreSQL user, persist only the corrected lifecycle fields
+before making a new destroy plan. A full apply could recreate resources already
+removed by the partial destroy, so use these targets:
+
+```shell
+terraform -chdir=infra/terraform apply \
+  -var-file=destroy.tfvars \
+  -target=google_project_service.secret_manager \
+  -target=google_project_service.iam \
+  -target=google_project_service.iam_credentials \
+  -target=google_project_service.sts \
+  -target=module.cloud_sql.google_sql_user.foodmind \
+  -target=module.cloud_sql.google_sql_user.kestra
+```
+
+Discard the failed saved plan, create a new `plan -destroy` with
+`destroy.tfvars`, inspect it, and apply the new plan. Terraform will abandon the
+two SQL-user resources, leave the project APIs enabled, and continue deleting
+the Cloud SQL instance and remaining infrastructure.

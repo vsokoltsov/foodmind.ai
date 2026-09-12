@@ -87,15 +87,17 @@ resource "google_sql_database" "kestra" {
 }
 
 resource "google_sql_user" "foodmind" {
-  project  = var.project_id
-  name     = "foodmind"
-  instance = google_sql_database_instance.foodmind.name
-  password = random_password.foodmind.result
+  project         = var.project_id
+  name            = "foodmind"
+  instance        = google_sql_database_instance.foodmind.name
+  password        = random_password.foodmind.result
+  deletion_policy = "ABANDON"
 }
 
 resource "google_sql_user" "kestra" {
-  project  = var.project_id
-  name     = "kestra"
-  instance = google_sql_database_instance.foodmind.name
-  password = random_password.kestra.result
+  project         = var.project_id
+  name            = "kestra"
+  instance        = google_sql_database_instance.foodmind.name
+  password        = random_password.kestra.result
+  deletion_policy = "ABANDON"
 }

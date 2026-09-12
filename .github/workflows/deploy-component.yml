@@ -23,6 +23,7 @@ on:
 
 jobs:
   deploy:
+    if: ${{ vars.GCP_INFRASTRUCTURE_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:

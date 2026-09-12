@@ -51,6 +51,10 @@ FoodMind ingests four datasets from three source families. Each source is preser
 
 The source data is intentionally heterogeneous. Missing fields and inconsistent source tags are retained at ingestion time rather than silently invented or discarded. Retrieval, canonical aggregate models, source-specific filters, and agent prompts handle these differences at query time. This preserves provenance and lets answers state which catalog supplied each fact.
 
+> ⚠️ GCP-backed GitHub Actions jobs are currently disabled. They run only when
+> the repository variable `GCP_INFRASTRUCTURE_ENABLED` is explicitly set to
+> `true`; local linting, type checking, and tests remain enabled.
+
 ## 🎯 Objectives
 
 - Ingest the three source families reproducibly with **dlt** and **Kestra**.
