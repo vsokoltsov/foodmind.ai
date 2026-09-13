@@ -4,9 +4,9 @@ terraform {
   required_providers {
     google = {
       source = "hashicorp/google"
-      # 7.46 adds REMOVE_PEERING for private-service connections whose
+      # 8.2 implements REMOVE_PEERING for private-service connections whose
       # producers retain internal allocations after their instances are gone.
-      version = "~> 7.46"
+      version = "~> 8.2"
     }
     github = {
       source  = "integrations/github"

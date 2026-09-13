@@ -87,7 +87,7 @@ necessary to remove FoodMind resources.
 
 Cloud SQL can retain producer-side networking allocations for a while after an
 instance disappears. The private-service connection therefore uses
-`deletion_policy = "REMOVE_PEERING"`, available in Google provider 7.46 and
+`deletion_policy = "REMOVE_PEERING"`, implemented in Google provider 8.2 and
 later. Once the instance is gone, this removes a lingering consumer VPC peering
 instead of letting it block deletion of the FoodMind network.
 
