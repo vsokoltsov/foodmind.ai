@@ -339,7 +339,22 @@ The stream emits lifecycle events such as `started`, `chat_created`, `query_rewr
    uv sync --dev
    ```
 
-3. Start the complete stack:
+3. Populate the food datasets through Kestra before running the application.
+
+   Run the `foodmind.foodmind_ingestion` parent flow described in
+   [Ingest data](#-ingest-data) and wait for it to finish successfully. The
+   application expects the resulting validated Elasticsearch indexes and read
+   aliases to exist before the UI, API, and chat worker are used.
+
+   The complete dataset requires approximately 15 GB of storage, and a full
+   ingestion run takes approximately two hours, depending on network and system
+   performance.
+
+   > ⚠️ Kestra ingestion is a required setup step. Without the populated source
+   > data, the application may start, but food searches and agent retrieval will
+   > return no useful results.
+
+4. Start the complete stack:
 
    ```bash
    docker compose up --build
@@ -347,7 +362,7 @@ The stream emits lifecycle events such as `started`, `chat_created`, `query_rewr
 
    `run-migrations` waits for PostgreSQL and Elasticsearch, applies Alembic migrations, creates missing Elasticsearch bootstrap indexes/aliases, and then allows dependent services to start. Kestra imports the flows in `infra/kestra/flows/` through the one-shot `kestra-init` service.
 
-4. Open the local services:
+5. Open the local services:
 
    - FoodMind UI: <http://localhost:7860>
    - FastAPI Swagger: <http://localhost:8000/docs>
